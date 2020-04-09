@@ -12,7 +12,7 @@ from io import StringIO
 __author__ = "Mauro Zackiewicz"
 __copyright__ = "Copyright 2020"
 __license__ = "New BSD License"
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 __email__ = "maurozac@gmail.com"
 __status__ = "Experimental"
 
@@ -45,14 +45,15 @@ br = raw['Brazil'][inicio['Brazil']:]  # Series
 br_n = br.shape[0]
 
 data = pd.DataFrame({'Brazil':br})
-data['Brazil'] = data['Brazil'] * (10**6) / popu['population']['Brazil']
+# data['Brazil'] = data['Brazil'] * (10**6) / popu['population']['Brazil']
 
 for k in inicio.keys():
     if k == "Brazil": continue
     if k not in popu.index: continue
     if inicio[k] == 0 or inicio[k] > inicio["Brazil"]: continue
     C = raw[k][inicio[k]:inicio[k]+br_n]
-    data[k] = C.values * (10**6) / popu['population'][k]
+    # data[k] = C.values * (10**6) / popu['population'][k]
+    data[k] = C.values
 
 # 3 dados para SP e cidade de SP
 
@@ -63,19 +64,20 @@ SP_estado = list(sp_estado['deaths'].head(br_n + 1).fillna(0.0))
 SP_estado = [SP_estado[i] - SP_estado[i+1] for i in range(len(SP_estado)-1)]
 SP_estado.reverse()
 SP_estado_popu = sp_estado['estimated_population_2019'].max()  # 45919049
-data['SP'] = pd.Series(SP_estado).values * (10**6) / SP_estado_popu
+# data['SP'] = pd.Series(SP_estado).values * (10**6) / SP_estado_popu
+data['SP'] = pd.Series(SP_estado).values
 
 br_ex_sp = [x[0]-x[1] for x in zip(list(br), SP_estado)]
-data['Brazil ex-SP'] = pd.Series(br_ex_sp).values * (10**6) / (popu['population']['Brazil'] - SP_estado_popu)
-
+# data['Brazil ex-SP'] = pd.Series(br_ex_sp).values * (10**6) / (popu['population']['Brazil'] - SP_estado_popu)
+data['Brazil ex-SP'] = pd.Series(br_ex_sp).values 
 
 sp_city = sp.loc[lambda df: df['city'] == u"São Paulo", :]
 SP_city = list(sp_city['deaths'].head(br_n + 1).fillna(0.0))
 SP_city = [SP_city[i] - SP_city[i+1] for i in range(len(SP_city)-1)]
 SP_city.reverse()
 SP_city_popu = sp_city['estimated_population_2019'].max()  # 12252023
-data['SP_City'] = pd.Series(SP_city).values * (10**6) / SP_city_popu
-
+# data['SP_City'] = pd.Series(SP_city).values * (10**6) / SP_city_popu
+data['SP_City'] = pd.Series(SP_city).values
 
 # https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.corr.html
 pearson = data.corr()

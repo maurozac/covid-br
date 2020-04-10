@@ -7,6 +7,7 @@ Modelagem em tempo real | COVID-19 no Brasil
 
 import datetime
 
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -28,6 +29,7 @@ __status__ = "Experimental"
 
 raw = pd.read_csv("https://covid.ourworldindata.org/data/ecdc/new_deaths.csv").fillna(0.0)
 # raw = pd.read_csv("https://covid.ourworldindata.org/data/ecdc/total_deaths.csv").fillna(0.0)
+tempo = raw['date']  #series
 raw = raw.drop(columns='date')
 
 popu = pd.read_csv("https://covid.ourworldindata.org/data/ecdc/locations.csv").set_index('countriesAndTerritories')
@@ -86,7 +88,7 @@ print(pearson['SP_City'].sort_values(ascending=False))
 
 # mortes por 100k, calibrando pela população
 por100k = {
-    'Brazil': data['Brazil'] * (10**5) / popu['population']['Brazil'],
+    'Brazil': data['Brazil'].values * (10**5) / popu['population']['Brazil'],
     'SP': pd.Series(SP_estado).values * (10**5) / SP_estado_popu,
     'SP_City': pd.Series(SP_city).values * (10**5) / SP_city_popu,
     'Brazil ex-SP': pd.Series(br_ex_sp).values * (10**5) / (popu['population']['Brazil'] - SP_estado_popu),
@@ -94,7 +96,7 @@ por100k = {
 
 # escolher referencia e casos mais proximos para comparar
 ref = 'SP_City'  # MUDAR AQUI
-out = ['Brazil', 'Brazil ex-SP', 'SP', 'SP_City']  # nao misturar com os demais cortes locais
+out = ['Brazil', 'Brazil ex-SP', 'SP', 'SP_City',]  # nao misturar com os demais cortes locais
 casos = [_ for _ in pearson[ref].sort_values(ascending=False).keys() if _ not in out][:4]
 
 calibrados = pd.DataFrame({ref:por100k[ref]})
@@ -106,11 +108,44 @@ for k in casos:
         additional = pd.DataFrame({k: C.values * (10**5) / popu['population'][k]})  # array
     calibrados = pd.concat([calibrados, additional], axis=1)
 
+# alisamento 7 Dias
+calibrados = calibrados.rolling(7).mean()
+
+# projecao
+
+pesos = [pearson[ref][c] for c in casos]  # melhor corr pesa mais
+pesos = [pesos[i]/sum(pesos) for i in range(len(pesos))]  # pesos normalizados
+pesos = dict(zip(casos, pesos))  # num dict para facilitar
+
+proj = [np.nan for _ in range(br_n)]
+proj[-1] =  calibrados[ref][br_n - 1]
+for d in range(br_n, calibrados.shape[0]):
+    x = 0  # incremento projetado
+    for c in casos:
+        if not np.isnan(calibrados[c][d]):
+            x += (calibrados[c][d] / calibrados[c][d-1]) * pesos[c]
+        else:
+            x += 1 * pesos[c]
+    proj.append(proj[-1] * x)
+
+projetado = np.array(proj)
+
+pico = np.nan_to_num(projetado).max()
+dia_do_pico = proj.index(np.nan_to_num(projetado).max())
+mortes_no_pico = pico * SP_city_popu/100000
+quando = datetime.datetime.now() + datetime.timedelta(days=dia_do_pico-br_n)
+print('MORTES NO PICO:', int(mortes_no_pico), "em", str(quando)[:10])
+aviso = "PICO: ~" + str(int(mortes_no_pico)) + " mortes em " + str(quando)[:10]
+
 # gráfico
 fig, ax = plt.subplots()
 hoje = str(datetime.datetime.now())[:16]
 ax.set_title(u"Evolução da Covid-19 | " + ref + " | " + hoje, fontsize=10)
-ax.plot(calibrados.rolling(7).mean(), linewidth=3)  # com alisamento de n pontos
+ax.plot(calibrados, linewidth=3)  # com alisamento de n pontos
+ax.plot(projetado, linewidth=2, linestyle=":", color="steelblue")
 ax.legend(calibrados, fontsize=8)
 plt.xlabel("Dias desde primeiras mortes", fontsize=8)
 plt.ylabel("Mortes diárias por 100 mil habitantes", fontsize=8)
+ax.plot(dia_do_pico, pico, '^', markersize=8.0, color="firebrick")
+ax.text(dia_do_pico, pico*1.1, aviso, fontsize=8)
+

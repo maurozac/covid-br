@@ -5,8 +5,8 @@ Modelagem em tempo real | COVID-19 no Brasil
 --------------------------------------------
 
 Ideias e modelagens desenvolvidas pela trinca:
-. Luiz Antonio Tozi
 . Mauro Zackieiwicz
+. Luiz Antonio Tozi
 . Rubens Monteiro Luciano
 
 Esta modelagem possui as seguintes características:
@@ -48,12 +48,12 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 __author__ = "Mauro Zackiewicz"   # codigo
 __copyright__ = "Copyright 2020"
 __license__ = "New BSD License"
-__version__ = "1.1.1"
+__version__ = "1.1.2"
 __email__ = "maurozac@gmail.com"
 __status__ = "Experimental"
 
 
-def preparar_dados(p1):
+def preparar_dados(p1, p4):
     u"""Busca dados e organiza tabela "data" com os dados de referência para a
     modelagem.
     Fontes:
@@ -95,7 +95,7 @@ def preparar_dados(p1):
 
     # contruir base para a tabela "data"
     inicio = raw.ge(p1).idxmax()  # ◔◔ {encontra os index de qdo cada pais alcança 3}
-    data = pd.DataFrame({'Brazil':raw['Brazil'][inicio['Brazil']:]}).reset_index().drop(columns='index')
+    data = pd.DataFrame({'Brazil':raw['Brazil'][inicio['Brazil']:] * p4}).reset_index().drop(columns='index')
     N = data.shape[0]
 
     # adicionar dados de SP
@@ -104,7 +104,7 @@ def preparar_dados(p1):
     SP_estado = [SP_estado[i] - SP_estado[i+1] for i in range(len(SP_estado)-1)]
     SP_estado.reverse()
     SP_estado_popu = sp_estado['estimated_population_2019'].max()  # 45919049
-    data['SP'] = pd.Series(SP_estado).values
+    data['SP'] = pd.Series(SP_estado).values * p4
 
     # adicionar dados da cidade de SP
     sp_city = sp.loc[lambda df: df['city'] == u"São Paulo", :]
@@ -112,10 +112,10 @@ def preparar_dados(p1):
     SP_city = [SP_city[i] - SP_city[i+1] for i in range(len(SP_city)-1)]
     SP_city.reverse()
     SP_city_popu = sp_city['estimated_population_2019'].max()  # 12252023
-    data['SP_City'] = pd.Series(SP_city).values
+    data['SP_City'] = pd.Series(SP_city).values * p4
 
     # adicionar dados do Brasil sem SP
-    br_ex_sp = [x[0]-x[1] for x in zip(list(br), SP_estado)]
+    br_ex_sp = [x[0]-x[1] for x in zip(list(data['Brazil']), SP_estado)]
     data['Brazil_sem_SP'] = pd.Series(br_ex_sp).values
 
     # adicionar dados dos países à frente ou pareados ao Brasil
@@ -136,9 +136,9 @@ def preparar_dados(p1):
     # dados normalizados por 100 mil hab. para Brasil
     por100k = {
         'Brazil': data['Brazil'].values * (10**5) / popuBR['Brazil'],
-        'SP': pd.Series(SP_estado).values * (10**5) / popuBR['SP'],
-        'SP_City': pd.Series(SP_city).values * (10**5) / popuBR['SP_City'],
-        'Brazil_sem_SP': pd.Series(br_ex_sp).values * (10**5) / popuBR['Brazil_sem_SP'],
+        'SP': data['SP'].values * (10**5) / popuBR['SP'],
+        'SP_City': data['SP_City'].values * (10**5) / popuBR['SP_City'],
+        'Brazil_sem_SP': data['Brazil_sem_SP'].values * (10**5) / popuBR['Brazil_sem_SP'],
     }
 
     return raw, inicio, data, N, popu, popuBR, por100k
@@ -215,7 +215,7 @@ def rodar_modelo(raw, inicio, data, N, popu, popuBR, por100k, p2, p3, ref):
     # .. quanto mais correlacionado, maior o peso }
     pesos = [pearson[ref][c] for c in correlacionados]  # melhor corr pesa mais
     pesos = [pesos[i]/sum(pesos) for i in range(len(pesos))]  # pesos normalizados
-    pesos = dict(zip(casos, pesos))  # num dict para facilitar
+    pesos = dict(zip(correlacionados, pesos))  # num dict para facilitar
 
     # proj <list>: vai ter ao final o tamanho da maior serie em calibrados
     proj = [np.nan for _ in range(N)]  # começa com nan onde já temos os dados da ref
@@ -225,18 +225,21 @@ def rodar_modelo(raw, inicio, data, N, popu, popuBR, por100k, p2, p3, ref):
     # ◔◔ {a projeção segue dia a dia as variações dos países correlacionado}
     for d in range(N, calibrados.shape[0]):
         x = 0  # incremento estimado para o dia
-        for c in casos:
+        for c in correlacionados:
             if not np.isnan(calibrados[c][d]):
-                # adiciona o incremento do país ponderado por seu peso
-                x += (calibrados[c][d] / calibrados[c][d-1]) * pesos[c]
+                # adiciona o incremento % do país ponderado por seu peso
+                x += (calibrados[c][d]/calibrados[c][d-1]) * pesos[c]
             else:
                 # ◔◔ {qdo acabam os dados de um país ele pára de influenciar a taxa}
                 x += 1 * pesos[c]
+            # print(d, c, x)
         # a série da projeção é construída aplicando o incremento estimado ao dia anterior
         proj.append(proj[-1] * x)
 
     # projetado <Array>
     projetado = np.array(proj)
+
+    z = 1.0889929742388758 + 1.125075895567699 + 1.1205164992826397 + 1.111576011157601 + 1.1027397260273972
 
     # ◔◔ {informações adicionais}
     # pico => valor máximo da série projetada
@@ -293,11 +296,12 @@ def gerar_grafico(correlacionados, calibrados, projetado, infos):
 p1 = 3  # mortes no dia para iniciar série
 p2 = 5  # número de países mais correlacionados
 p3 = 7  # alisamento para o gráfico (média móvel)
+p4 = 1.48  # correcao por subnotificacao nos dados brasileiros
+# ◔◔ {ref: https://noticias.uol.com.br/saude/ultimas-noticias/redacao/2020/04/09/covid-19-declaracoes-de-obito-apontam-48-mais-mortes-do-que-dado-oficial.htm}
 ref = "SP_City"  # escolher um entre: "SP_City", "SP", "Brazil", "Brazil_sem_SP"
 
-raw, inicio, data, N, popu, popuBR, por100k = preparar_dados(p1)
+raw, inicio, data, N, popu, popuBR, por100k = preparar_dados(p1, p4)
 
 correlacionados, calibrados, projetado, infos = rodar_modelo(raw, inicio, data, N, popu, popuBR, por100k, p2, p3, ref)
 
 gerar_grafico(correlacionados, calibrados, projetado, infos)
-

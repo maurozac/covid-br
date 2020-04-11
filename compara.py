@@ -48,7 +48,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 __author__ = "Mauro Zackiewicz"   # codigo
 __copyright__ = "Copyright 2020"
 __license__ = "New BSD License"
-__version__ = "1.1.2"
+__version__ = "1.1.3"
 __email__ = "maurozac@gmail.com"
 __status__ = "Experimental"
 
@@ -70,7 +70,7 @@ def preparar_dados(p1, p4):
         (ver macro parâmetros). Isto reduz a quantidade de países para o grupo
         que está à frente ou pareado ao Brazil. A partir do index 0 é possível
         comparar a evolução dos casos entre os países.
-    N <int> | Número de dias da série de dados para o Brasil
+    nbr <int> | Número de dias da série de dados para o Brasil
     popu: <DataFrame> | População dos países para depois calcular a taxa de mortes
         por 100 mil habitantes
     popuBR: <dict> | População dos recortes dentro do Brasil
@@ -96,11 +96,11 @@ def preparar_dados(p1, p4):
     # contruir base para a tabela "data"
     inicio = raw.ge(p1).idxmax()  # ◔◔ {encontra os index de qdo cada pais alcança 3}
     data = pd.DataFrame({'Brazil':raw['Brazil'][inicio['Brazil']:] * p4}).reset_index().drop(columns='index')
-    N = data.shape[0]
+    nbr = data.shape[0]
 
     # adicionar dados de SP
     sp_estado = sp.loc[lambda df: df['place_type'] == "state", :]
-    SP_estado = list(sp_estado['deaths'].head(N + 1).fillna(0.0))
+    SP_estado = list(sp_estado['deaths'].head(nbr + 1).fillna(0.0))
     SP_estado = [SP_estado[i] - SP_estado[i+1] for i in range(len(SP_estado)-1)]
     SP_estado.reverse()
     SP_estado_popu = sp_estado['estimated_population_2019'].max()  # 45919049
@@ -108,7 +108,7 @@ def preparar_dados(p1, p4):
 
     # adicionar dados da cidade de SP
     sp_city = sp.loc[lambda df: df['city'] == u"São Paulo", :]
-    SP_city = list(sp_city['deaths'].head(N + 1).fillna(0.0))
+    SP_city = list(sp_city['deaths'].head(nbr + 1).fillna(0.0))
     SP_city = [SP_city[i] - SP_city[i+1] for i in range(len(SP_city)-1)]
     SP_city.reverse()
     SP_city_popu = sp_city['estimated_population_2019'].max()  # 12252023
@@ -123,7 +123,7 @@ def preparar_dados(p1, p4):
         if k == "Brazil": continue
         if k not in popu.index: continue
         if inicio[k] == 0 or inicio[k] > inicio["Brazil"]: continue
-        C = raw[k][inicio[k]:inicio[k]+N]
+        C = raw[k][inicio[k]:inicio[k]+nbr]
         data[k] = C.values
 
     # preparar dict com dados da população Brasil
@@ -133,6 +133,7 @@ def preparar_dados(p1, p4):
         'SP_City': SP_city_popu,
         'Brazil_sem_SP': popu['population']['Brazil'] - SP_estado_popu,
     }
+
     # dados normalizados por 100 mil hab. para Brasil
     por100k = {
         'Brazil': data['Brazil'].values * (10**5) / popuBR['Brazil'],
@@ -141,10 +142,10 @@ def preparar_dados(p1, p4):
         'Brazil_sem_SP': data['Brazil_sem_SP'].values * (10**5) / popuBR['Brazil_sem_SP'],
     }
 
-    return raw, inicio, data, N, popu, popuBR, por100k
+    return raw, inicio, data, nbr, popu, popuBR, por100k
 
 
-def rodar_modelo(raw, inicio, data, N, popu, popuBR, por100k, p2, p3, ref):
+def rodar_modelo(raw, inicio, data, nbr, popu, popuBR, por100k, p2, p3, ref):
     """
     Usa os dados preparados para gerar dados para visualização e a projeção da
     evoluação da epidemia.
@@ -164,8 +165,8 @@ def rodar_modelo(raw, inicio, data, N, popu, popuBR, por100k, p2, p3, ref):
     # válida. Ao contrário, a correlação "bruta" seria a mais verossível}
 
     # ◔◔ {mas caso você ache que vale a pena alisar antes, use o codigo abaixo}
-    # p4 = 5  # alisamento para os casos de morte reportados (média móvel)
-    # data = data.rolling(p4).mean()
+    # alisamento para os casos de morte reportados (média móvel)
+    # data = data.rolling(5).mean()
 
     # calcular a matriz de correlações:
     pearson = data.corr()
@@ -218,12 +219,12 @@ def rodar_modelo(raw, inicio, data, N, popu, popuBR, por100k, p2, p3, ref):
     pesos = dict(zip(correlacionados, pesos))  # num dict para facilitar
 
     # proj <list>: vai ter ao final o tamanho da maior serie em calibrados
-    proj = [np.nan for _ in range(N)]  # começa com nan onde já temos os dados da ref
-    proj[-1] =  calibrados[ref][N - 1] # primeiro valor coincide com último de ref
+    proj = [np.nan for _ in range(nbr)]  # começa com nan onde já temos os dados da ref
+    proj[-1] =  calibrados[ref][nbr - 1] # primeiro valor coincide com último de ref
     # será a partir daí que começa a projeção
 
     # ◔◔ {a projeção segue dia a dia as variações dos países correlacionado}
-    for d in range(N, calibrados.shape[0]):
+    for d in range(nbr, calibrados.shape[0]):
         x = 0  # incremento estimado para o dia
         for c in correlacionados:
             if not np.isnan(calibrados[c][d]):
@@ -239,8 +240,6 @@ def rodar_modelo(raw, inicio, data, N, popu, popuBR, por100k, p2, p3, ref):
     # projetado <Array>
     projetado = np.array(proj)
 
-    z = 1.0889929742388758 + 1.125075895567699 + 1.1205164992826397 + 1.111576011157601 + 1.1027397260273972
-
     # ◔◔ {informações adicionais}
     # pico => valor máximo da série projetada
     pico = np.nan_to_num(projetado).max()  # float
@@ -248,7 +247,7 @@ def rodar_modelo(raw, inicio, data, N, popu, popuBR, por100k, p2, p3, ref):
     mortes_no_pico = str(int(pico * popuBR[ref]/100000))  # str
     # dia em que acontece o pico
     ix_do_pico = proj.index(np.nan_to_num(projetado).max())  # int => index
-    dia_do_pico = str(datetime.datetime.now() + datetime.timedelta(days=ix_do_pico-N))[:10] # str
+    dia_do_pico = str(datetime.datetime.now() + datetime.timedelta(days=ix_do_pico-nbr))[:10] # str
     # consolidado para output
     infos = {
         "mortes_no_pico": mortes_no_pico,
@@ -290,7 +289,7 @@ def gerar_grafico(correlacionados, calibrados, projetado, infos):
     ax.text(infos["index"]-2, infos["pico"]*1.2, msg, fontsize=8, color="#1f78b4")
     fig.text(0.99, 0.01, u'M.Zac | L.Tozi | R.Luciano', family="monospace", fontsize='6', color='gray', horizontalalignment='right')
 
-################################################################################
+#########################   R O D A R   #######################################
 
 # Macro parâmetros
 p1 = 3  # mortes no dia para iniciar série
@@ -300,8 +299,6 @@ p4 = 1.48  # correcao por subnotificacao nos dados brasileiros
 # ◔◔ {ref: https://noticias.uol.com.br/saude/ultimas-noticias/redacao/2020/04/09/covid-19-declaracoes-de-obito-apontam-48-mais-mortes-do-que-dado-oficial.htm}
 ref = "SP_City"  # escolher um entre: "SP_City", "SP", "Brazil", "Brazil_sem_SP"
 
-raw, inicio, data, N, popu, popuBR, por100k = preparar_dados(p1, p4)
-
-correlacionados, calibrados, projetado, infos = rodar_modelo(raw, inicio, data, N, popu, popuBR, por100k, p2, p3, ref)
-
+raw, inicio, data, nbr, popu, popuBR, por100k = preparar_dados(p1, p4)
+correlacionados, calibrados, projetado, infos = rodar_modelo(raw, inicio, data, nbr, popu, popuBR, por100k, p2, p3, ref)
 gerar_grafico(correlacionados, calibrados, projetado, infos)

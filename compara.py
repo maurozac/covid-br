@@ -38,6 +38,7 @@ import datetime
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 import seaborn as sns
 sns.set()
 # no ipython usar este comando antes de rodar => %matplotlib osx
@@ -48,7 +49,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 __author__ = "Mauro Zackiewicz"   # codigo
 __copyright__ = "Copyright 2020"
 __license__ = "New BSD License"
-__version__ = "1.2.1"
+__version__ = "1.3.1"
 __email__ = "maurozac@gmail.com"
 __status__ = "Experimental"
 
@@ -82,6 +83,7 @@ def preparar_dados(p1, p4):
 
     # correcao de subnotificacao Brazil:
     raw['Brazil'] = raw['Brazil'] * p4
+
     # dados da população mundo
     # popu = pd.read_csv("https://covid.ourworldindata.org/data/ecdc/locations.csv").set_index('countriesAndTerritories')
     # popu["paises"] = [_.replace('_', ' ').replace('United States of America', 'United States') for _ in popu.index]
@@ -225,12 +227,22 @@ def rodar_modelo(raw, inicio, data, nbr, p2, p3, ref):
     # dia em que acontece o pico
     dia_do_pico = str(datetime.datetime.now() + datetime.timedelta(days=ix_do_pico-nbr))[:10] # str
 
+    # mortes totais: hoje mais tres semanas
+    ix_hoje = list(calibrados[ref]).index(calibrados[ref][nbr - 1])
+    mortes_totais = {
+        hoje[:10]: int(calibrados[ref].sum()),
+        str(datetime.datetime.now() + datetime.timedelta(days=7))[:10]: int(calibrados[ref].sum()+projetado[26+1:26+1+7].sum()),
+        str(datetime.datetime.now() + datetime.timedelta(days=14))[:10]: int(calibrados[ref].sum()+projetado[26+1:26+1+14].sum()),
+        str(datetime.datetime.now() + datetime.timedelta(days=21))[:10]: int(calibrados[ref].sum()+projetado[26+1:26+1+21].sum()),
+    }
+
     # consolidado para output
     infos = {
         "mortes_no_pico": mortes_no_pico,
         "dia_do_pico": dia_do_pico,
         "pico": pico,
         "index": ix_do_pico,
+        "mt": mortes_totais,
     }
 
     return correlacionados, calibrados, projetado, infos
@@ -264,10 +276,79 @@ def gerar_grafico(correlacionados, calibrados, projetado, infos):
     ax.plot(infos["index"], infos["pico"], '^', markersize=6.0, color="#1f78b4")
     msg = "PICO ~" + infos["mortes_no_pico"] + " mortes em " + infos["dia_do_pico"] + " (subnotificação x" + str(p4) +")"
     ax.text(infos["index"]-2, infos["pico"]+25, msg, fontsize=7, color="#1f78b4")
-    fig.text(0.99, 0.01, u'M.Zac | L.Tozi | R.Luciano', family="monospace", fontsize='6', color='gray', horizontalalignment='right')
+    fig.text(0.99, 0.01, u'M.Zac | L.Tozi | R.Luciano', family="monospace", fontsize='6', color='#ff003f', horizontalalignment='right')
 
 
-#########################   Subnotificações   #################################
+def gerar_fig_relatorio():
+    """Roda vários cenários e monta mosaico de gráficos + notas."""
+    # parametros padrao, precisa mudar aqui localmente
+    p1 = 20  # mortes no dia para iniciar série
+    p2 = 3  # número de países mais correlacionados
+    p3 = 7  # alisamento para o gráfico (média móvel)
+    p4 = 12  # correcao por subnotificacao nos dados brasileiros
+    ref = ["Brazil", "SP", "SP_City"]
+
+    notas = u"""
+    Sobre o modelo e as estimativas:
+
+    Este é um modelo empírico, recalculado diariamente para refletir as melhores informações disponíveis. As projeções para Brasil, estado de
+    São Paulo e cidade de São Paulo são obtidas a partir da dinâmica observada nos três países que melhor se correlacionam com a evolução dos
+    nossos dados. Conforme a epidemia avança, em função do nosso desempenho, esse referencial pode mudar.
+
+    A linha azul corresponde ao número diário de mortes corrigido pela melhor estimativa de subnotificações disponível. Esse parâmetro pode ser
+    alterado caso surjam estimativas mais precisas. A parte pontilhada é a projeção. Seu desenho é reflexo do comportamento dos países seguidos.
+
+    Referência atual de subnotificação => x12, obtida a partir de:
+    https://saude.estadao.com.br/noticias/geral,em-um-mes-brasil-tem-alta-de-2239-mortes-por-problemas-respiratorios,70003268759
+
+    Outros parâmetros relevantes:
+    => as diferentes curvas são emparelhadas a partir do dia em que contabilizam20 ou mais mortes em um dia (metedologia usada pelo El País)
+    => as curvas são alisadas com média móvel de 7 dias, por isso não iniciam no dia zero. O alisamento permite melhor visualização das curvas
+
+    Todo o código para gerar este reletório está aberto em: https://github.com/Maurozac/covid-br/blob/master/compara.py
+    Contribuições são bem vindas (e você pode regerar as projeções com outros parâmetros para explorar as características do modelo e obter
+    projeções para cenários baseados em outras premissas).
+    """
+    totais = u"""
+    Mortes estimadas (acumulado)"""
+
+    hoje = str(datetime.datetime.now())[:16]
+    fig, ax = plt.subplots(1, 3, figsize=(12, 6), sharex=True, sharey=True)
+    fig.suptitle(u"Projeção da epidemia Covid-19" +  " | " + hoje, fontsize=12)
+    fig.subplots_adjust(bottom=0.5)
+    fig.text(0.33, 0.42, notas, fontsize=7, verticalalignment='top')
+    fig.text(0.33, 0.02, u'  M.Zac | L.Tozi | R.Luciano', family="monospace", fontsize='6', color='#ff003f', horizontalalignment='left')
+
+    for i in [0, 1, 2]:
+        raw, inicio, data, nbr = preparar_dados(p1, p4)
+        correlacionados, calibrados, projetado, infos = rodar_modelo(raw, inicio, data, nbr, p2, p3, ref[i])
+
+        ax[i].set_title(ref[i], fontsize=8)
+        ax[i].set_xlabel(u'Dias desde ' + str(p1) + ' mortes em um dia', fontsize=8)
+        ax[i].set_xlim(0, calibrados.shape[0]+20)
+        ax[i].set_ylabel(u'Mortes por dia', fontsize=8)
+        for c in correlacionados:
+            ax[i].plot(calibrados[c], linewidth=3, color="#ff7c7a")
+            lvi = calibrados[c].last_valid_index()
+            if c == "China": nome = "Wuhan"
+            else: nome = c
+            ax[i].text(lvi+1, calibrados[c][lvi], nome, fontsize=6, verticalalignment="center")
+        ax[i].plot(calibrados[ref[i]], linewidth=3, color="#1f78b4")
+        ax[i].plot(projetado, linewidth=2, linestyle=":", color="#1f78b4")
+        lvi = pd.Series(projetado).last_valid_index()
+        ax[i].text(lvi+1, projetado[lvi], ref[i], fontsize=6, verticalalignment="center")
+        # ax.legend(calibrados, fontsize=8)
+        ax[i].plot(infos["index"], infos["pico"], '^', markersize=5.0, color="1", markeredgecolor="#1f78b4")
+        msg = "PICO ~" + infos["mortes_no_pico"] + " mortes em " + infos["dia_do_pico"] + " (sub x" + str(p4) +")"
+        ax[i].text(infos["index"]-2, infos["pico"]+35, msg, fontsize=7, color="#1f78b4")
+        totais += "\n\n    " + ref[i] + "\n" + "\n".join(["    " + x[0] + ": " + str(x[1]) for x in infos['mt'].items()])
+
+    fig.text(0.12, 0.42, totais, fontsize=7, verticalalignment='top', color="#1f78b4")
+
+    return fig
+
+
+#########################   Subnotificações   ##################################
 
 """
 ◔◔ {cada fonte abaixo implica em um valor para o coeficiente p4 de ajuste
@@ -276,18 +357,18 @@ pela ordem, infos mais recentes ao final
 ref: https://noticias.uol.com.br/saude/ultimas-noticias/redacao/2020/04/09/covid-19-declaracoes-de-obito-apontam-48-mais-mortes-do-que-dado-oficial.htm}
 p4 = 1.48
 
-https://saude.estadao.com.br/noticias/geral,em-um-mes-brasil-tem-alta-de-2239-mortes-por-problemas-respiratorios,70003268759?utm_source=estadao:whatsapp&utm_medium=link
+https://saude.estadao.com.br/noticias/geral,em-um-mes-brasil-tem-alta-de-2239-mortes-por-problemas-respiratorios,70003268759
 extrapolação => 2239 mortes por covid em março nao contabilizadas, de modo que o total ao final do mês
 seria de 201 (covid oficial) + 2239 (potencialmente no pior cenário) = 2440
 p4 = 12
 
 """
 
-#########################   R O D A R   #######################################
+#########################   ESTUDAR   ##########################################
 
 # Macro parâmetros
 p1 = 20  # mortes no dia para iniciar série
-p2 = 5  # número de países mais correlacionados
+p2 = 3  # número de países mais correlacionados
 p3 = 7  # alisamento para o gráfico (média móvel)
 p4 = 12  # correcao por subnotificacao nos dados brasileiros
 # ◔◔ {ref: https://noticias.uol.com.br/saude/ultimas-noticias/redacao/2020/04/09/covid-19-declaracoes-de-obito-apontam-48-mais-mortes-do-que-dado-oficial.htm}
@@ -296,3 +377,17 @@ ref = "Brazil"  # escolher um entre: "SP_City", "SP", "Brazil", "Brazil_sem_SP"
 raw, inicio, data, nbr = preparar_dados(p1, p4)
 correlacionados, calibrados, projetado, infos = rodar_modelo(raw, inicio, data, nbr, p2, p3, ref)
 gerar_grafico(correlacionados, calibrados, projetado, infos)
+
+#########################   RELATORIO   ########################################
+
+# acerte o caminho para o seu ambiente... esse aí é o meu :-)
+hoje = str(datetime.datetime.now())[:10]
+my_path = "/Users/tapirus/Desktop/covid_dashboard_"+hoje+".pdf"
+
+# gera o dash do dia
+dashboard = gerar_fig_relatorio()
+
+# salva em um arquivo pdf
+pp = PdfPages(my_path)
+dashboard.savefig(pp, format='pdf')
+pp.close()

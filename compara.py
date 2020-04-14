@@ -291,19 +291,18 @@ def gerar_fig_relatorio():
     notas = u"""
     Sobre o modelo e as estimativas:
 
-    Este é um modelo empírico, recalculado diariamente para refletir as melhores informações disponíveis. As projeções para Brasil, estado de
-    São Paulo e cidade de São Paulo são obtidas a partir da dinâmica observada nos três países que melhor se correlacionam com a evolução dos
-    nossos dados. Conforme a epidemia avança, em função do nosso desempenho, esse referencial pode mudar.
+    As projeções para Brasil, São Paulo e cidade de São Paulo são obtidas a partir da trajetória observada nos três países que melhor
+    se correlacionem com a evolução dos nossos dados. Conforme a epidemia avança, em função do nosso desempenho, esse referencial pode mudar.
+    O desenho da curva projetada (pontilhada) é reflexo do comportamento dos países seguidos.
 
-    A linha azul corresponde ao número diário de mortes corrigido pela melhor estimativa de subnotificações disponível. Esse parâmetro pode ser
-    alterado caso surjam estimativas mais precisas. A parte pontilhada é a projeção. Seu desenho é reflexo do comportamento dos países seguidos.
-
-    Referência atual de subnotificação => x12, obtida a partir de:
+    Os dados brasileiros são corrigidos pela melhor estimativa de subnotificações disponível. Esse parâmetro pode ser alterado caso surjam estimativas
+    mais precisas. A referência atual de subnotificação => x12 foi obtida a partir de:
     https://saude.estadao.com.br/noticias/geral,em-um-mes-brasil-tem-alta-de-2239-mortes-por-problemas-respiratorios,70003268759
 
     Outros parâmetros relevantes:
-    => as diferentes curvas são emparelhadas a partir do dia em que contabilizam20 ou mais mortes em um dia (metedologia usada pelo El País)
+    => as curvas dos diferentes lugares são emparelhadas a partir do dia em que ocorrem 20 ou mais mortes (metedologia usada pelo El País)
     => as curvas são alisadas com média móvel de 7 dias, por isso não iniciam no dia zero. O alisamento permite melhor visualização das curvas
+    => as projeções são recalculadas diariamente e podem sofrer alterações significativas em função de novas informações incorporadas
 
     Todo o código para gerar este reletório está aberto em: https://github.com/Maurozac/covid-br/blob/master/compara.py
     Contribuições são bem vindas (e você pode regerar as projeções com outros parâmetros para explorar as características do modelo e obter
@@ -364,7 +363,7 @@ p4 = 12
 
 """
 
-#########################   ESTUDAR   ##########################################
+################   Para estudar e calibrar o modelo   ##########################
 
 # Macro parâmetros
 p1 = 20  # mortes no dia para iniciar série

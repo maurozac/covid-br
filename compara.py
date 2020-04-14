@@ -76,10 +76,12 @@ def preparar_dados(p1, p4):
     # ◔◔ {usamos as mortes diárias por parecer ser o dado mais confiável}
     raw = pd.read_csv("https://covid.ourworldindata.org/data/ecdc/new_deaths.csv").fillna(0.0)
     # ◔◔ {o link abaixo carrega o acumulado de mortes, não usamos pq a soma vai alisando a série}
-    # raw = pd.read_csv("https://covid.ourworldindata.org/data/ecdc/total_deaths.csv").fillna(0.0)
+    raw_soma = pd.read_csv("https://covid.ourworldindata.org/data/ecdc/total_deaths.csv").fillna(0.0)
     # tempo = raw['date']  # ◔◔ {não usamos as datas}
     raw = raw.drop(columns='date')
 
+    # correcao de subnotificacao Brazil:
+    raw['Brazil'] = raw['Brazil'] * p4
     # dados da população mundo
     # popu = pd.read_csv("https://covid.ourworldindata.org/data/ecdc/locations.csv").set_index('countriesAndTerritories')
     # popu["paises"] = [_.replace('_', ' ').replace('United States of America', 'United States') for _ in popu.index]
@@ -91,7 +93,7 @@ def preparar_dados(p1, p4):
 
     # contruir base para a tabela "data"
     inicio = raw.ge(p1).idxmax()  # ◔◔ {encontra os index de qdo cada pais alcança 3}
-    data = pd.DataFrame({'Brazil':raw['Brazil'][inicio['Brazil']:] * p4}).reset_index().drop(columns='index')
+    data = pd.DataFrame({'Brazil':raw['Brazil'][inicio['Brazil']:]}).reset_index().drop(columns='index')
     nbr = data.shape[0]
 
     # adicionar dados de SP
@@ -213,9 +215,16 @@ def rodar_modelo(raw, inicio, data, nbr, p2, p3, ref):
     pico = np.nan_to_num(projetado).max()  # float
     # mortes valor absoluto
     mortes_no_pico = str(int(pico))  # str
-    # dia em que acontece o pico
     ix_do_pico = proj.index(np.nan_to_num(projetado).max())  # int => index
+    # no caso do pico já ter passado
+    if calibrados[ref].max() > pico:
+        pico = calibrados[ref].max()
+        mortes_no_pico = str(int(pico))
+        ix_do_pico = list(calibrados[ref]).index(pico)
+
+    # dia em que acontece o pico
     dia_do_pico = str(datetime.datetime.now() + datetime.timedelta(days=ix_do_pico-nbr))[:10] # str
+
     # consolidado para output
     infos = {
         "mortes_no_pico": mortes_no_pico,
@@ -238,7 +247,7 @@ def gerar_grafico(correlacionados, calibrados, projetado, infos):
     fig, ax = plt.subplots()
     hoje = str(datetime.datetime.now())[:16]
     ax.set_title(u"Evolução da Covid-19 | " + ref + " | " + hoje, fontsize=10)
-    ax.set_xlabel(u'Dias desde ' + str(p1) + ' primeiras mortes', fontsize=8)
+    ax.set_xlabel(u'Dias desde ' + str(p1) + ' mortes em um dia', fontsize=8)
     ax.set_xlim(0, calibrados.shape[0]+20)
     ax.set_ylabel(u'Mortes por dia', fontsize=8)
     for c in correlacionados:
@@ -253,20 +262,36 @@ def gerar_grafico(correlacionados, calibrados, projetado, infos):
     ax.text(lvi+1, projetado[lvi], ref, fontsize=6, verticalalignment="center")
     # ax.legend(calibrados, fontsize=8)
     ax.plot(infos["index"], infos["pico"], '^', markersize=6.0, color="#1f78b4")
-    msg = "PICO ~" + infos["mortes_no_pico"] + " mortes em " + infos["dia_do_pico"]
+    msg = "PICO ~" + infos["mortes_no_pico"] + " mortes em " + infos["dia_do_pico"] + " (subnotificação x" + str(p4) +")"
     ax.text(infos["index"]-2, infos["pico"]+25, msg, fontsize=7, color="#1f78b4")
     fig.text(0.99, 0.01, u'M.Zac | L.Tozi | R.Luciano', family="monospace", fontsize='6', color='gray', horizontalalignment='right')
 
 
+#########################   Subnotificações   #################################
+
+"""
+◔◔ {cada fonte abaixo implica em um valor para o coeficiente p4 de ajuste
+pela ordem, infos mais recentes ao final
+
+ref: https://noticias.uol.com.br/saude/ultimas-noticias/redacao/2020/04/09/covid-19-declaracoes-de-obito-apontam-48-mais-mortes-do-que-dado-oficial.htm}
+p4 = 1.48
+
+https://saude.estadao.com.br/noticias/geral,em-um-mes-brasil-tem-alta-de-2239-mortes-por-problemas-respiratorios,70003268759?utm_source=estadao:whatsapp&utm_medium=link
+extrapolação => 2239 mortes por covid em março nao contabilizadas, de modo que o total ao final do mês
+seria de 201 (covid oficial) + 2239 (potencialmente no pior cenário) = 2440
+p4 = 12
+
+"""
+
 #########################   R O D A R   #######################################
 
 # Macro parâmetros
-p1 = 3  # mortes no dia para iniciar série
+p1 = 20  # mortes no dia para iniciar série
 p2 = 5  # número de países mais correlacionados
 p3 = 7  # alisamento para o gráfico (média móvel)
-p4 = 1.48  # correcao por subnotificacao nos dados brasileiros
+p4 = 12  # correcao por subnotificacao nos dados brasileiros
 # ◔◔ {ref: https://noticias.uol.com.br/saude/ultimas-noticias/redacao/2020/04/09/covid-19-declaracoes-de-obito-apontam-48-mais-mortes-do-que-dado-oficial.htm}
-ref = "SP_City"  # escolher um entre: "SP_City", "SP", "Brazil", "Brazil_sem_SP"
+ref = "Brazil"  # escolher um entre: "SP_City", "SP", "Brazil", "Brazil_sem_SP"
 
 raw, inicio, data, nbr = preparar_dados(p1, p4)
 correlacionados, calibrados, projetado, infos = rodar_modelo(raw, inicio, data, nbr, p2, p3, ref)

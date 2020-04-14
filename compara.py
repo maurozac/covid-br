@@ -279,13 +279,13 @@ def gerar_grafico(correlacionados, calibrados, projetado, infos):
     fig.text(0.99, 0.01, u'M.Zac | L.Tozi | R.Luciano', family="monospace", fontsize='6', color='#ff003f', horizontalalignment='right')
 
 
-def gerar_fig_relatorio():
+def gerar_fig_relatorio(p1, p2, p3, p4):
     """Roda vários cenários e monta mosaico de gráficos + notas."""
     # parametros padrao, precisa mudar aqui localmente
-    p1 = 20  # mortes no dia para iniciar série
-    p2 = 3  # número de países mais correlacionados
-    p3 = 7  # alisamento para o gráfico (média móvel)
-    p4 = 12  # correcao por subnotificacao nos dados brasileiros
+    # p1 = 20  # mortes no dia para iniciar série
+    # p2 = 3  # número de países mais correlacionados
+    # p3 = 7  # alisamento para o gráfico (média móvel)
+    # p4 = 12  # correcao por subnotificacao nos dados brasileiros
     ref = ["Brazil", "SP", "SP_City"]
 
     notas = u"""
@@ -310,6 +310,7 @@ def gerar_fig_relatorio():
     Contribuições são bem vindas (e você pode regerar as projeções com outros parâmetros para explorar as características do modelo e obter
     projeções para cenários baseados em outras premissas).
     """
+
     totais = u"""
     Mortes estimadas (acumulado)"""
 
@@ -386,7 +387,7 @@ hoje = str(datetime.datetime.now())[:10]
 my_path = "/Users/tapirus/Desktop/covid_dashboard_"+hoje+".pdf"
 
 # gera o dash do dia
-dashboard = gerar_fig_relatorio()
+dashboard = gerar_fig_relatorio(p1, p2, p3, p4)
 
 # salva em um arquivo pdf
 pp = PdfPages(my_path)

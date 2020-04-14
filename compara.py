@@ -292,17 +292,19 @@ def gerar_fig_relatorio():
     Sobre o modelo e as estimativas:
 
     As projeções para Brasil, São Paulo e cidade de São Paulo são obtidas a partir da trajetória observada nos três países que melhor
-    se correlacionem com a evolução dos nossos dados. Conforme a epidemia avança, em função do nosso desempenho, esse referencial pode mudar.
-    O desenho da curva projetada (pontilhada) é reflexo do comportamento dos países seguidos.
+    se correlacionem com a evolução dos nossos dados. O desenho da curva projetada (pontilhada) é reflexo do comportamento observado
+    nos países seguidos. Conforme a epidemia avança, em função do nosso desempenho, esse referencial pode mudar (podemos passar a se-
+    guir lugares com melhor ou pior desempenho e isso mudará as projeções).
 
-    Os dados brasileiros são corrigidos pela melhor estimativa de subnotificações disponível. Esse parâmetro pode ser alterado caso surjam estimativas
-    mais precisas. A referência atual de subnotificação => x12 foi obtida a partir de:
+    Os dados brasileiros estão corrigidos pela melhor estimativa disponível para as subnotificações. Esse parâmetro será alterado sempre
+    que surgirem estimativas mais precisas. A referência atual de subnotificação de mortes (12 vezes) foi obtida a partir de:
     https://saude.estadao.com.br/noticias/geral,em-um-mes-brasil-tem-alta-de-2239-mortes-por-problemas-respiratorios,70003268759
 
     Outros parâmetros relevantes:
-    => as curvas dos diferentes lugares são emparelhadas a partir do dia em que ocorrem 20 ou mais mortes (metedologia usada pelo El País)
-    => as curvas são alisadas com média móvel de 7 dias, por isso não iniciam no dia zero. O alisamento permite melhor visualização das curvas
-    => as projeções são recalculadas diariamente e podem sofrer alterações significativas em função de novas informações incorporadas
+    => as curvas dos diferentes lugares são emparelhadas a partir do dia em que ocorrem 20 ou mais mortes (metedologia usada pelo El País).
+    => as curvas são alisadas com média móvel de 7 dias, por isso não iniciam no dia zero. O alisamento permite melhor visualização das curvas.
+    => as projeções são recalculadas diariamente e podem sofrer alterações significativas em função das novas informações incorporadas e do
+    aprendizado acumulado.
 
     Todo o código para gerar este reletório está aberto em: https://github.com/Maurozac/covid-br/blob/master/compara.py
     Contribuições são bem vindas (e você pode regerar as projeções com outros parâmetros para explorar as características do modelo e obter

@@ -230,7 +230,7 @@ def rodar_modelo(raw, inicio, data, nbr, p2, p3, ref):
     # mortes totais: hoje mais tres semanas
     ix_hoje = list(calibrados[ref]).index(calibrados[ref][nbr - 1])
     mortes_totais = {
-        hoje[:10]: int(calibrados[ref].sum()),
+        str(datetime.datetime.now())[:10]: int(calibrados[ref].sum()),
         str(datetime.datetime.now() + datetime.timedelta(days=7))[:10]: int(calibrados[ref].sum()+projetado[26+1:26+1+7].sum()),
         str(datetime.datetime.now() + datetime.timedelta(days=14))[:10]: int(calibrados[ref].sum()+projetado[26+1:26+1+14].sum()),
         str(datetime.datetime.now() + datetime.timedelta(days=21))[:10]: int(calibrados[ref].sum()+projetado[26+1:26+1+21].sum()),

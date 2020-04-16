@@ -35,6 +35,7 @@ São pontos de partida para discutir a modelagem e propor alternativas.
 
 import datetime
 
+import requests
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -54,7 +55,7 @@ __email__ = "maurozac@gmail.com"
 __status__ = "Experimental"
 
 
-def preparar_dados(p1, p4):
+def preparar_dados(p1):
     u"""Busca dados e organiza tabela "data" com os dados de referência para a
     modelagem.
     Fontes:
@@ -82,12 +83,12 @@ def preparar_dados(p1, p4):
     raw = raw.drop(columns='date')
 
     # correcao de subnotificacao Brazil:
-    raw['Brazil'] = raw['Brazil'] * p4
+    sub, hip = estimar_subnotificacao('Brazil')
+    p4br = (sub / raw['Brazil'].sum())
+    raw['Brazil'] = raw['Brazil'] * p4br
 
-    # dados da população mundo
-    # popu = pd.read_csv("https://covid.ourworldindata.org/data/ecdc/locations.csv").set_index('countriesAndTerritories')
-    # popu["paises"] = [_.replace('_', ' ').replace('United States of America', 'United States') for _ in popu.index]
-    # popu = popu.set_index("paises")
+    # dict subs usa mesmas refs como chave => para reportar nos graficos
+    subs = {"Brazil": str(round(p4br, 1)) + " (" + hip + ")"}
 
     # dados Brasil
     # ◔◔ {já baixamos filtrado para SP, mas pode se usar outros estados}
@@ -103,20 +104,21 @@ def preparar_dados(p1, p4):
     SP_estado = list(sp_estado['deaths'].head(nbr + 1).fillna(0.0))
     SP_estado = [SP_estado[i] - SP_estado[i+1] for i in range(len(SP_estado)-1)]
     SP_estado.reverse()
-    # SP_estado_popu = sp_estado['estimated_population_2019'].max()  # 45919049
-    data['SP'] = pd.Series(SP_estado).values * p4
+
+    sub_uf, hip_uf = estimar_subnotificacao('SP')
+    p4uf = (sub_uf/pd.Series(SP_estado).values.sum())
+    data['SP'] = pd.Series(SP_estado).values * p4uf
+    subs["SP"] = str(round(p4uf, 1)) + " (" + hip_uf + ")"
 
     # adicionar dados da cidade de SP
     sp_city = sp.loc[lambda df: df['city'] == u"São Paulo", :]
     SP_city = list(sp_city['deaths'].head(nbr + 1).fillna(0.0))
     SP_city = [SP_city[i] - SP_city[i+1] for i in range(len(SP_city)-1)]
     SP_city.reverse()
-    # SP_city_popu = sp_city['estimated_population_2019'].max()  # 12252023
-    data['SP_City'] = pd.Series(SP_city).values * p4
 
-    # adicionar dados do Brasil sem SP
-    br_ex_sp = [x[0]-x[1] for x in zip(list(data['Brazil']), SP_estado)]
-    data['Brazil_sem_SP'] = pd.Series(br_ex_sp).values
+    # subnotificacao para cidade => aprox pela do estado
+    data['SP_City'] = pd.Series(SP_city).values * p4uf
+    subs["SP_City"] = str(round(p4uf, 1)) + " (" + hip_uf + ")"
 
     # adicionar dados dos países à frente ou pareados ao Brasil
     for k in inicio.keys():
@@ -125,7 +127,7 @@ def preparar_dados(p1, p4):
         C = raw[k][inicio[k]:inicio[k]+nbr]
         data[k] = C.values
 
-    return raw, inicio, data, nbr
+    return raw, inicio, data, nbr, subs
 
 
 def rodar_modelo(raw, inicio, data, nbr, p2, p3, ref):
@@ -249,7 +251,7 @@ def rodar_modelo(raw, inicio, data, nbr, p2, p3, ref):
     return correlacionados, calibrados, projetado, infos
 
 
-def gerar_grafico(correlacionados, calibrados, projetado, infos):
+def gerar_grafico(correlacionados, calibrados, projetado, infos, subs):
     """
     Paleta: https://encycolorpedia.com/
     #1f78b4 base: azul #7ba3cd white shade
@@ -275,42 +277,43 @@ def gerar_grafico(correlacionados, calibrados, projetado, infos):
     ax.text(lvi+1, projetado[lvi], ref, fontsize=6, verticalalignment="center")
     # ax.legend(calibrados, fontsize=8)
     ax.plot(infos["index"], infos["pico"], '^', markersize=6.0, color="#1f78b4")
-    msg = "PICO ~" + infos["mortes_no_pico"] + " mortes em " + infos["dia_do_pico"] + " (subnotificação x" + str(p4) +")"
+    msg = "PICO ~" + infos["mortes_no_pico"] + " mortes em " + infos["dia_do_pico"] + " s=" + subs[ref]
     ax.text(infos["index"]-2, infos["pico"]+25, msg, fontsize=7, color="#1f78b4")
     fig.text(0.99, 0.01, u'M.Zac | L.Tozi | R.Luciano', family="monospace", fontsize='6', color='#ff003f', horizontalalignment='right')
 
 
-def gerar_fig_relatorio(p1, p2, p3, p4):
+def gerar_fig_relatorio(p1, p2, p3):
     """Roda vários cenários e monta mosaico de gráficos + notas."""
     # parametros padrao, precisa mudar aqui localmente
     # p1 = 20  # mortes no dia para iniciar série
     # p2 = 3  # número de países mais correlacionados
     # p3 = 7  # alisamento para o gráfico (média móvel)
-    # p4 = 12  # correcao por subnotificacao nos dados brasileiros
+
     ref = ["Brazil", "SP", "SP_City"]
 
     notas = u"""
     Sobre o modelo e as estimativas:
 
-    As projeções para Brasil, São Paulo e cidade de São Paulo são obtidas a partir da trajetória observada nos três países que melhor
-    se correlacionem com a evolução dos nossos dados. O desenho da curva projetada (pontilhada) é reflexo do comportamento observado
-    nos países seguidos. Conforme a epidemia avança, em função do nosso desempenho, esse referencial pode mudar (podemos passar a se-
-    guir lugares com melhor ou pior desempenho e isso mudará as projeções).
-
-    Os dados brasileiros estão corrigidos pela melhor estimativa disponível para as subnotificações. Esse parâmetro será alterado sempre
-    que surgirem estimativas mais precisas. A referência atual de subnotificação de mortes (12 vezes) foi obtida a partir de:
-    https://saude.estadao.com.br/noticias/geral,em-um-mes-brasil-tem-alta-de-2239-mortes-por-problemas-respiratorios,70003268759
+    As projeções para Brasil, São Paulo e cidade de São Paulo são obtidas a partir da trajetória observada nos três países que melhor se correlacionem com a
+    evolução dos nossos dados. O desenho da curva projetada (pontilhada) é reflexo do comportamento observado nos países seguidos. Conforme a epidemia avança
+    esse referencial pode mudar. Dependerá de nossa estratégia e atitude.
 
     Outros parâmetros relevantes:
-    => as curvas dos diferentes lugares são emparelhadas a partir do dia em que ocorrem 20 ou mais mortes (metedologia usada pelo El País).
-    => as curvas são alisadas com média móvel de 7 dias, por isso não iniciam no dia zero. O alisamento permite melhor visualização das curvas.
-    => as projeções são recalculadas diariamente e podem sofrer alterações significativas em função das novas informações incorporadas e do
-    aprendizado acumulado.
+        • os valores são corrigidos por uma estimativa de subnotificação (s) calculado para duas situações:
+            (a) mortes suspeitas aguardando confirmação e ainda não notificadas
+            (b) mortes potencialmente devido à Covid-19 notificadas como devido a outras causas
+        • as curvas dos diferentes lugares são emparelhadas a partir do dia em que ocorrem N ou mais mortes (eixo x).
+        • as curvas são alisadas (médias móveis), por isso não iniciam no dia zero. O alisamento permite melhor visualização das curvas mas pode gerar algum
+        desvio com relação aos número diários absolutos.
+        • as projeções são recalculadas diariamente e podem sofrer alterações significativas em função das novas informações incorporadas.
 
-    Todo o código para gerar este reletório está aberto em: https://github.com/Maurozac/covid-br/blob/master/compara.py
-    Contribuições são bem vindas (e você pode regerar as projeções com outros parâmetros para explorar as características do modelo e obter
-    projeções para cenários baseados em outras premissas).
+    Fontes dos dados:
+        https://covid.ourworldindata.org
+        https://brasil.io
+        https://transparencia.registrocivil.org.br
     """
+
+    equipe = u'  M.Zac | L.Tozi | R.Luciano || https://github.com/Maurozac/covid-br/blob/master/compara.py'
 
     totais = u"""
     Mortes estimadas (acumulado)"""
@@ -320,10 +323,10 @@ def gerar_fig_relatorio(p1, p2, p3, p4):
     fig.suptitle(u"Projeção da epidemia Covid-19" +  " | " + hoje, fontsize=12)
     fig.subplots_adjust(bottom=0.5)
     fig.text(0.33, 0.42, notas, fontsize=7, verticalalignment='top')
-    fig.text(0.33, 0.02, u'  M.Zac | L.Tozi | R.Luciano', family="monospace", fontsize='6', color='#ff003f', horizontalalignment='left')
+    fig.text(0.33, 0.02, equipe, family="monospace", fontsize='6', color='#ff003f', horizontalalignment='left')
 
     for i in [0, 1, 2]:
-        raw, inicio, data, nbr = preparar_dados(p1, p4)
+        raw, inicio, data, nbr, subs = preparar_dados(p1)
         correlacionados, calibrados, projetado, infos = rodar_modelo(raw, inicio, data, nbr, p2, p3, ref[i])
 
         ax[i].set_title(ref[i], fontsize=8)
@@ -342,7 +345,7 @@ def gerar_fig_relatorio(p1, p2, p3, p4):
         ax[i].text(lvi+1, projetado[lvi], ref[i], fontsize=6, verticalalignment="center")
         # ax.legend(calibrados, fontsize=8)
         ax[i].plot(infos["index"], infos["pico"], '^', markersize=5.0, color="1", markeredgecolor="#1f78b4")
-        msg = "PICO ~" + infos["mortes_no_pico"] + " mortes em " + infos["dia_do_pico"] + " (sub x" + str(p4) +")"
+        msg = "PICO ~" + infos["mortes_no_pico"] + " mortes em " + infos["dia_do_pico"] + " s=" + subs[ref[i]]
         ax[i].text(infos["index"]-2, infos["pico"]+35, msg, fontsize=7, color="#1f78b4")
         totais += "\n\n    " + ref[i] + "\n" + "\n".join(["    " + x[0] + ": " + str(x[1]) for x in infos['mt'].items()])
 
@@ -364,22 +367,103 @@ https://saude.estadao.com.br/noticias/geral,em-um-mes-brasil-tem-alta-de-2239-mo
 extrapolação => 2239 mortes por covid em março nao contabilizadas, de modo que o total ao final do mês
 seria de 201 (covid oficial) + 2239 (potencialmente no pior cenário) = 2440
 p4 = 12
+=> DEPRECATED: esta situação ocorreu apenas pontualmente durante o mes de março,
+mudamos a metodologia para calcular esse parâmetro on-fly (cf. função abaixo)
+
+p4 foi para dentro das funções
 
 """
+
+
+def estimar_subnotificacao(ref):
+    u"""Usa dados do Portal da Transparencia do Registro Civil do Brasil para estimar
+    a subnotificação de casos de Covid-19.
+
+    https://transparencia.registrocivil.org.br/especial-covid
+
+    Este portal nos premite ver diferença entre a ocorrência de mortes atribuídas
+    à insuficiência respiratória e pneumonia em 2019 e 2020.
+
+    O PROBLEMA => sabemos que há subnoticações de mortes por COVID por pelo menos duas causas:
+    a) demora na confirmação de casos, testados ou não
+    b) casos não são nem testados e são notificados com causa mortis distinta
+
+    Para estimar a subnotificação adotamos as seguintes hipóteses:
+
+    I) Aproximadamente => mortes por pneumonia e insuficiencia_respiratoria seriam iguais em
+    2019 e 2020
+
+    II) caso a) => por causa da demora na confirmacao a morte não é notificada e os números
+    de mortes por pneumonia ou insuficiencia_respiratoria para 2020 ficam menores do que 2019.
+    A diferença seria igual ao número máximo de mortes por covid ainda não confirmadas. Esse
+    número corresponde ao número de mortes ainda no "limbo", sem causa morte determinada.
+
+    III) caso b) => por causa da notificação errada, o número de 2020 fica maior e a diferença
+    seria igual ao casos de covid não notificados
+
+    Como as bases de dados são dinâmicas e os números vão mudando conforme confirmações vão
+    sendo computadas. Portanto, o coeficiente de ajuste (p4) precisa ser recalculado diariamente.
+
+    Inputs:
+    .ref => sigla do estado ou calcula para Brasil
+    .total => soma das mortes para ref
+
+    Retorna: tupla
+    . sub: número de casos potencialmente subnotificados
+    . hip: hipóte 'A': casos não notificados; 'B': casos notificados com outra causa
+    """
+
+    estados = [
+        'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS',
+        'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC',
+        'SP', 'SE', 'TO',
+        ]
+    if ref not in estados:
+        ref = "all"
+
+    hoje = str(datetime.datetime.now())[:10]
+
+    api = "https://transparencia.registrocivil.org.br/api/covid?"
+    api += "data_type=data_ocorrido"
+    api += "&search=death-respiratory"
+    api += "&state=" + ref
+    api += "&start_date=2020-03-16"
+    api += "&end_date=" + hoje
+
+    call_1 = api + "&causa=insuficiencia_respiratoria"
+    call_2 = api + "&causa=pneumonia"
+
+    c1 = requests.get(call_1).json()
+    c2 = requests.get(call_2).json()
+
+    m19 = c1['chart']['2019'] + c2['chart']['2019']
+    m20 = c1['chart']['2020'] + c2['chart']['2020']
+
+    if m20 < m19:   # caso a
+        sub = m19 - m20
+        hip = "a"
+    else:           # caso b
+        sub = m20 - m19
+        hip = "b"
+
+    return sub, hip
+
+
+# sub, hip = estimar_subnotificacao(ref)
+
 
 ################   Para estudar e calibrar o modelo   ##########################
 
 # Macro parâmetros
-p1 = 16  # mortes no dia para iniciar série
+p1 = 15  # mortes no dia para iniciar série
 p2 = 3  # número de países mais correlacionados
-p3 = 7  # alisamento para o gráfico (média móvel)
-p4 = 12  # correcao por subnotificacao nos dados brasileiros
+p3 = 5  # alisamento para o gráfico (média móvel)
 # ◔◔ {ref: https://noticias.uol.com.br/saude/ultimas-noticias/redacao/2020/04/09/covid-19-declaracoes-de-obito-apontam-48-mais-mortes-do-que-dado-oficial.htm}
 ref = "Brazil"  # escolher um entre: "SP_City", "SP", "Brazil", "Brazil_sem_SP"
 
-raw, inicio, data, nbr = preparar_dados(p1, p4)
+raw, inicio, data, nbr, subs = preparar_dados(p1)
 correlacionados, calibrados, projetado, infos = rodar_modelo(raw, inicio, data, nbr, p2, p3, ref)
-gerar_grafico(correlacionados, calibrados, projetado, infos)
+gerar_grafico(correlacionados, calibrados, projetado, infos, subs)
 
 #########################   RELATORIO   ########################################
 
@@ -387,10 +471,10 @@ gerar_grafico(correlacionados, calibrados, projetado, infos)
 my_path = "/Users/tapirus/Desktop/"
 
 
-def relatorio_hoje(p1, p2, p3, p4, my_path):
+def relatorio_hoje(p1, p2, p3, my_path):
     """Calcula tudo e gera um relatorio em pdf."""
     # gera o dash do dia
-    dashboard = gerar_fig_relatorio(p1, p2, p3, p4)
+    dashboard = gerar_fig_relatorio(p1, p2, p3)
     # salva em um arquivo pdf
     hoje = str(datetime.datetime.now())[:10]
     pp = PdfPages(my_path+"covid_dashboard_"+hoje+".pdf")
@@ -398,4 +482,4 @@ def relatorio_hoje(p1, p2, p3, p4, my_path):
     pp.close()
 
 
-relatorio_hoje(p1, p2, p3, p4, my_path)
+relatorio_hoje(p1, p2, p3, my_path)

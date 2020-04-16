@@ -50,7 +50,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 __author__ = "Mauro Zackiewicz"   # codigo
 __copyright__ = "Copyright 2020"
 __license__ = "New BSD License"
-__version__ = "1.4.1"
+__version__ = "1.4.2"
 __email__ = "maurozac@gmail.com"
 __status__ = "Experimental"
 
@@ -84,7 +84,7 @@ def preparar_dados(p1):
 
     # correcao de subnotificacao Brazil:
     sub, hip = estimar_subnotificacao('Brazil')
-    p4br = (sub / raw['Brazil'].sum())
+    p4br = ((sub + raw['Brazil'].sum()) / raw['Brazil'].sum())
     raw['Brazil'] = raw['Brazil'] * p4br
 
     # dict subs usa mesmas refs como chave => para reportar nos graficos
@@ -106,7 +106,7 @@ def preparar_dados(p1):
     SP_estado.reverse()
 
     sub_uf, hip_uf = estimar_subnotificacao('SP')
-    p4uf = (sub_uf/pd.Series(SP_estado).values.sum())
+    p4uf = ((sub_uf + pd.Series(SP_estado).values.sum())/pd.Series(SP_estado).values.sum())
     data['SP'] = pd.Series(SP_estado).values * p4uf
     subs["SP"] = str(round(p4uf, 1)) + " (" + hip_uf + ")"
 
@@ -346,7 +346,7 @@ def gerar_fig_relatorio(p1, p2, p3):
         # ax.legend(calibrados, fontsize=8)
         ax[i].plot(infos["index"], infos["pico"], '^', markersize=5.0, color="1", markeredgecolor="#1f78b4")
         msg = "PICO ~" + infos["mortes_no_pico"] + " mortes em " + infos["dia_do_pico"] + " s=" + subs[ref[i]]
-        ax[i].text(infos["index"]-2, infos["pico"]+35, msg, fontsize=7, color="#1f78b4")
+        ax[i].text(infos["index"]-1, infos["pico"]-120, msg, fontsize=7, color="#1f78b4", verticalalignment='top')
         totais += "\n\n    " + ref[i] + "\n" + "\n".join(["    " + x[0] + ": " + str(x[1]) for x in infos['mt'].items()])
 
     fig.text(0.12, 0.42, totais, fontsize=7, verticalalignment='top', color="#1f78b4")

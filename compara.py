@@ -218,22 +218,23 @@ def rodar_modelo(raw, inicio, data, nbr, p2, p3, ref):
     # mortes valor absoluto
     mortes_no_pico = str(int(pico))  # str
     ix_do_pico = proj.index(np.nan_to_num(projetado).max())  # int => index
+    # dia em que acontece o pico [! soma 1 no index pq projetado sobrepoe o primeiro valor]
+    dia_do_pico = str(datetime.datetime.now() + datetime.timedelta(days=ix_do_pico-nbr+1))[:10] # str
     # no caso do pico já ter passado
     if calibrados[ref].max() > pico:
         pico = calibrados[ref].max()
         mortes_no_pico = str(int(pico))
         ix_do_pico = list(calibrados[ref]).index(pico)
+        dia_do_pico = str(datetime.datetime.now() + datetime.timedelta(days=ix_do_pico-nbr))[:10] # str
 
-    # dia em que acontece o pico
-    dia_do_pico = str(datetime.datetime.now() + datetime.timedelta(days=ix_do_pico-nbr))[:10] # str
 
     # mortes totais: hoje mais tres semanas
     ix_hoje = list(calibrados[ref]).index(calibrados[ref][nbr - 1])
     mortes_totais = {
         str(datetime.datetime.now())[:10]: int(calibrados[ref].sum()),
-        str(datetime.datetime.now() + datetime.timedelta(days=7))[:10]: int(calibrados[ref].sum()+projetado[26+1:26+1+7].sum()),
-        str(datetime.datetime.now() + datetime.timedelta(days=14))[:10]: int(calibrados[ref].sum()+projetado[26+1:26+1+14].sum()),
-        str(datetime.datetime.now() + datetime.timedelta(days=21))[:10]: int(calibrados[ref].sum()+projetado[26+1:26+1+21].sum()),
+        str(datetime.datetime.now() + datetime.timedelta(days=7))[:10]: int(calibrados[ref].sum()+projetado[nbr+1:nbr+1+7].sum()),
+        str(datetime.datetime.now() + datetime.timedelta(days=14))[:10]: int(calibrados[ref].sum()+projetado[nbr+1:nbr+1+14].sum()),
+        str(datetime.datetime.now() + datetime.timedelta(days=21))[:10]: int(calibrados[ref].sum()+projetado[nbr+1:nbr+1+21].sum()),
     }
 
     # consolidado para output
@@ -268,8 +269,8 @@ def gerar_grafico(correlacionados, calibrados, projetado, infos):
         if c == "China": nome = "Wuhan"
         else: nome = c
         ax.text(lvi+1, calibrados[c][lvi], nome, fontsize=6, verticalalignment="center")
-    ax.plot(calibrados[ref], linewidth=3, color="#1f78b4")
     ax.plot(projetado, linewidth=2, linestyle=":", color="#1f78b4")
+    ax.plot(calibrados[ref], linewidth=3, color="#1f78b4")
     lvi = pd.Series(projetado).last_valid_index()
     ax.text(lvi+1, projetado[lvi], ref, fontsize=6, verticalalignment="center")
     # ax.legend(calibrados, fontsize=8)
@@ -369,7 +370,7 @@ p4 = 12
 ################   Para estudar e calibrar o modelo   ##########################
 
 # Macro parâmetros
-p1 = 20  # mortes no dia para iniciar série
+p1 = 16  # mortes no dia para iniciar série
 p2 = 3  # número de países mais correlacionados
 p3 = 7  # alisamento para o gráfico (média móvel)
 p4 = 12  # correcao por subnotificacao nos dados brasileiros
@@ -383,13 +384,18 @@ gerar_grafico(correlacionados, calibrados, projetado, infos)
 #########################   RELATORIO   ########################################
 
 # acerte o caminho para o seu ambiente... esse aí é o meu :-)
-hoje = str(datetime.datetime.now())[:10]
-my_path = "/Users/tapirus/Desktop/covid_dashboard_"+hoje+".pdf"
+my_path = "/Users/tapirus/Desktop/"
 
-# gera o dash do dia
-dashboard = gerar_fig_relatorio(p1, p2, p3, p4)
 
-# salva em um arquivo pdf
-pp = PdfPages(my_path)
-dashboard.savefig(pp, format='pdf')
-pp.close()
+def relatorio_hoje(p1, p2, p3, p4, my_path):
+    """Calcula tudo e gera um relatorio em pdf."""
+    # gera o dash do dia
+    dashboard = gerar_fig_relatorio(p1, p2, p3, p4)
+    # salva em um arquivo pdf
+    hoje = str(datetime.datetime.now())[:10]
+    pp = PdfPages(my_path+"covid_dashboard_"+hoje+".pdf")
+    dashboard.savefig(pp, format='pdf')
+    pp.close()
+
+
+relatorio_hoje(p1, p2, p3, p4, my_path)

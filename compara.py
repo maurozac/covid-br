@@ -50,7 +50,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 __author__ = "Mauro Zackiewicz"   # codigo
 __copyright__ = "Copyright 2020"
 __license__ = "New BSD License"
-__version__ = "1.3.1"
+__version__ = "1.4.1"
 __email__ = "maurozac@gmail.com"
 __status__ = "Experimental"
 
@@ -78,7 +78,7 @@ def preparar_dados(p1):
     # ◔◔ {usamos as mortes diárias por parecer ser o dado mais confiável}
     raw = pd.read_csv("https://covid.ourworldindata.org/data/ecdc/new_deaths.csv").fillna(0.0)
     # ◔◔ {o link abaixo carrega o acumulado de mortes, não usamos pq a soma vai alisando a série}
-    raw_soma = pd.read_csv("https://covid.ourworldindata.org/data/ecdc/total_deaths.csv").fillna(0.0)
+    # raw_soma = pd.read_csv("https://covid.ourworldindata.org/data/ecdc/total_deaths.csv").fillna(0.0)
     # tempo = raw['date']  # ◔◔ {não usamos as datas}
     raw = raw.drop(columns='date')
 
@@ -301,7 +301,7 @@ def gerar_fig_relatorio(p1, p2, p3):
     Outros parâmetros relevantes:
         • os valores são corrigidos por uma estimativa de subnotificação (s) calculado para duas situações:
             (a) mortes suspeitas aguardando confirmação e ainda não notificadas
-            (b) mortes potencialmente devido à Covid-19 notificadas como devido a outras causas
+            (b) mortes potencialmente devido à Covid-19 notificadas como devidas a outras causas
         • as curvas dos diferentes lugares são emparelhadas a partir do dia em que ocorrem N ou mais mortes (eixo x).
         • as curvas são alisadas (médias móveis), por isso não iniciam no dia zero. O alisamento permite melhor visualização das curvas mas pode gerar algum
         desvio com relação aos número diários absolutos.

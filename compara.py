@@ -50,12 +50,12 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 __author__ = "Mauro Zackiewicz"   # codigo
 __copyright__ = "Copyright 2020"
 __license__ = "New BSD License"
-__version__ = "1.4.2"
+__version__ = "1.5.1"
 __email__ = "maurozac@gmail.com"
 __status__ = "Experimental"
 
 
-def preparar_dados(p1):
+def preparar_dados(p1, uf="SP", cidade=u"São Paulo"):
     u"""Busca dados e organiza tabela "data" com os dados de referência para a
     modelagem.
     Fontes:
@@ -81,56 +81,80 @@ def preparar_dados(p1):
     # raw_soma = pd.read_csv("https://covid.ourworldindata.org/data/ecdc/total_deaths.csv").fillna(0.0)
     # tempo = raw['date']  # ◔◔ {não usamos as datas}
     raw = raw.drop(columns='date')
+    raw = raw.drop(columns='World')
 
-    # correcao de subnotificacao Brazil:
-    sub, hip = estimar_subnotificacao('Brazil')
+    # correcao de subnotificacao Brasil:
+    sub, hip = estimar_subnotificacao('Brasil')
     p4br = ((sub + raw['Brazil'].sum()) / raw['Brazil'].sum())
-    raw['Brazil'] = raw['Brazil'] * p4br
+    raw['Brasil'] = raw['Brazil'] * p4br
 
     # dict subs usa mesmas refs como chave => para reportar nos graficos
-    subs = {"Brazil": str(round(p4br, 1)) + " (" + hip + ")"}
-
-    # dados Brasil
-    # ◔◔ {já baixamos filtrado para SP, mas pode se usar outros estados}
-    sp = pd.read_csv("https://brasil.io/dataset/covid19/caso?state=SP&format=csv")
+    subs = {"Brasil": str(round(p4br, 1)) + " (" + hip + ")"}
 
     # contruir base para a tabela "data"
     inicio = raw.ge(p1).idxmax()  # ◔◔ {encontra os index de qdo cada pais alcança 3}
-    data = pd.DataFrame({'Brazil':raw['Brazil'][inicio['Brazil']:]}).reset_index().drop(columns='index')
+    data = pd.DataFrame({'Brasil':raw['Brasil'][inicio['Brasil']:]}).reset_index().drop(columns='index')
     nbr = data.shape[0]
 
-    # adicionar dados de SP
-    sp_estado = sp.loc[lambda df: df['place_type'] == "state", :]
-    SP_estado = list(sp_estado['deaths'].head(nbr + 1).fillna(0.0))
-    SP_estado = [SP_estado[i] - SP_estado[i+1] for i in range(len(SP_estado)-1)]
-    SP_estado.reverse()
+    # dados Brasil
+    estados = [
+        'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS',
+        'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC',
+        'SP', 'SE', 'TO',
+        ]
 
-    sub_uf, hip_uf = estimar_subnotificacao('SP')
-    p4uf = ((sub_uf + pd.Series(SP_estado).values.sum())/pd.Series(SP_estado).values.sum())
-    data['SP'] = pd.Series(SP_estado).values * p4uf
-    subs["SP"] = str(round(p4uf, 1)) + " (" + hip_uf + ")"
+    if uf not in estados or type(uf) is not str:
+        uf = "SP"
+        print(uf, u": UF inválida, usando 'SP'")
 
-    # adicionar dados da cidade de SP
-    sp_city = sp.loc[lambda df: df['city'] == u"São Paulo", :]
-    SP_city = list(sp_city['deaths'].head(nbr + 1).fillna(0.0))
-    SP_city = [SP_city[i] - SP_city[i+1] for i in range(len(SP_city)-1)]
-    SP_city.reverse()
+    # ◔◔ {já baixamos filtrado para uf, mas pode se usar outros estados}
+    uf_data = pd.read_csv("https://brasil.io/dataset/covid19/caso?state="+uf+"&format=csv")
 
-    # subnotificacao para cidade => aprox pela do estado
-    data['SP_City'] = pd.Series(SP_city).values * p4uf
-    subs["SP_City"] = str(round(p4uf, 1)) + " (" + hip_uf + ")"
+    # adicionar dados da uf
+    uf_select = uf_data.loc[lambda df: df['place_type'] == "state", :]
+    uf_mortes = list(uf_select['deaths'].head(nbr + 1).fillna(0.0))
+    uf_mortes = [uf_mortes[i] - uf_mortes[i+1] for i in range(len(uf_mortes)-1)]
+    uf_mortes += [0 for _ in range(nbr-len(uf_mortes))]  # corrigir tamanho
+    uf_mortes.reverse()
 
+    sub_uf, hip_uf = estimar_subnotificacao(uf)
+    p4uf = ((sub_uf + pd.Series(uf_mortes).values.sum())/pd.Series(uf_mortes).values.sum())
+    data[uf] = pd.Series(uf_mortes).values * p4uf
+    subs[uf] = str(round(p4uf, 1)) + " (" + hip_uf + ")"
+
+    # adicionar dados da cidade
+    cidade_select = uf_data.loc[lambda df: df['city'] == cidade, :]
+    if cidade_select.shape[0] > 0:
+        cidade_mortes = list(cidade_select['deaths'].head(nbr + 1).fillna(0.0))
+        cidade_mortes = [cidade_mortes[i] - cidade_mortes[i+1] for i in range(len(cidade_mortes)-1)]
+        cidade_mortes += [0 for _ in range(nbr-len(cidade_mortes))]  # corrigir tamanho
+        cidade_mortes.reverse()
+        if sum(cidade_mortes):
+            # subnotificacao para cidade => aprox pela do estado
+            data[cidade] = pd.Series(cidade_mortes).values * p4uf
+            subs[cidade] = str(round(p4uf, 1)) + " (" + hip_uf + ")"
+        else:
+            subs["n/d"] = ""
+            print(u"AVISO: a cidade " + cidade + " não possui mortes confirmadas")
+    else:
+        subs["n/d"] = ""
+        print(u"AVISO: a cidade " + cidade + " não consta nos dados para esta UF")
+        print(u'Utilize uma das cidades disponíveis para o terceiro gráfico:')
+        for d in set(uf_data['city']):
+            print(d)
+
+    refs = list(subs.keys())  # as referencias validas...
     # adicionar dados dos países à frente ou pareados ao Brasil
     for k in inicio.keys():
-        if k == "Brazil": continue
-        if inicio[k] == 0 or inicio[k] > inicio["Brazil"]: continue
+        if k == "Brasil": continue
+        if inicio[k] == 0 or inicio[k] > inicio["Brasil"]: continue
         C = raw[k][inicio[k]:inicio[k]+nbr]
         data[k] = C.values
 
-    return raw, inicio, data, nbr, subs
+    return raw, inicio, data, nbr, subs, refs
 
 
-def rodar_modelo(raw, inicio, data, nbr, p2, p3, ref):
+def rodar_modelo(raw, inicio, data, nbr, p2, p3, ref, refs):
     """
     Usa os dados preparados para gerar dados para visualização e a projeção da
     evoluação da epidemia.
@@ -158,14 +182,8 @@ def rodar_modelo(raw, inicio, data, nbr, p2, p3, ref):
     # ◔◔ {o default do método usa a correlação de Pearson, cf. ref abaixo}
     # https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.corr.html
 
-    # ◔◔ {se quiser ver as prévias ...}
-    # print(pearson['Brazil'].sort_values(ascending=False))
-    # print(pearson['Brazil_sem_SP'].sort_values(ascending=False))
-    # print(pearson['SP'].sort_values(ascending=False))
-    # print(pearson['SP_City'].sort_values(ascending=False))
-
     # ◔◔ { não incluir os casos locais para evitar endogeneidade}
-    out = ['Brazil', 'Brazil_sem_SP', 'SP', 'SP_City',]  # nao misturar com os demais cortes locais
+    out = refs # nao misturar com os demais cortes locais
 
     # selecionar os p2 países que melhor se correlacionam com a ref
     correlacionados = [_ for _ in pearson[ref].sort_values(ascending=False).keys() if _ not in out][:p2]
@@ -229,7 +247,6 @@ def rodar_modelo(raw, inicio, data, nbr, p2, p3, ref):
         ix_do_pico = list(calibrados[ref]).index(pico)
         dia_do_pico = str(datetime.datetime.now() + datetime.timedelta(days=ix_do_pico-nbr))[:10] # str
 
-
     # mortes totais: hoje mais tres semanas
     ix_hoje = list(calibrados[ref]).index(calibrados[ref][nbr - 1])
     mortes_totais = {
@@ -251,52 +268,14 @@ def rodar_modelo(raw, inicio, data, nbr, p2, p3, ref):
     return correlacionados, calibrados, projetado, infos
 
 
-def gerar_grafico(correlacionados, calibrados, projetado, infos, subs):
-    """
-    Paleta: https://encycolorpedia.com/
-    #1f78b4 base: azul #7ba3cd white shade
-    #111111 branco
-    #ff003f vermelho #ff7c7a white shade
-    #000000 preto
-    """
-    fig, ax = plt.subplots()
-    hoje = str(datetime.datetime.now())[:16]
-    ax.set_title(u"Evolução da Covid-19 | " + ref + " | " + hoje, fontsize=10)
-    ax.set_xlabel(u'Dias desde ' + str(p1) + ' mortes em um dia', fontsize=8)
-    ax.set_xlim(0, calibrados.shape[0]+20)
-    ax.set_ylabel(u'Mortes por dia', fontsize=8)
-    for c in correlacionados:
-        ax.plot(calibrados[c], linewidth=3, color="#ff7c7a")
-        lvi = calibrados[c].last_valid_index()
-        if c == "China": nome = "Wuhan"
-        else: nome = c
-        ax.text(lvi+1, calibrados[c][lvi], nome, fontsize=6, verticalalignment="center")
-    ax.plot(projetado, linewidth=2, linestyle=":", color="#1f78b4")
-    ax.plot(calibrados[ref], linewidth=3, color="#1f78b4")
-    lvi = pd.Series(projetado).last_valid_index()
-    ax.text(lvi+1, projetado[lvi], ref, fontsize=6, verticalalignment="center")
-    # ax.legend(calibrados, fontsize=8)
-    ax.plot(infos["index"], infos["pico"], '^', markersize=6.0, color="#1f78b4")
-    msg = "PICO ~" + infos["mortes_no_pico"] + " mortes em " + infos["dia_do_pico"] + " s=" + subs[ref]
-    ax.text(infos["index"]-2, infos["pico"]+25, msg, fontsize=7, color="#1f78b4")
-    fig.text(0.99, 0.01, u'M.Zac | L.Tozi | R.Luciano', family="monospace", fontsize='6', color='#ff003f', horizontalalignment='right')
-
-
-def gerar_fig_relatorio(p1, p2, p3):
+def gerar_fig_relatorio(p1, p2, p3, uf, cidade):
     """Roda vários cenários e monta mosaico de gráficos + notas."""
-    # parametros padrao, precisa mudar aqui localmente
-    # p1 = 20  # mortes no dia para iniciar série
-    # p2 = 3  # número de países mais correlacionados
-    # p3 = 7  # alisamento para o gráfico (média móvel)
-
-    ref = ["Brazil", "SP", "SP_City"]
 
     notas = u"""
     Sobre o modelo e as estimativas:
 
-    As projeções para Brasil, São Paulo e cidade de São Paulo são obtidas a partir da trajetória observada nos três países que melhor se correlacionem com a
-    evolução dos nossos dados. O desenho da curva projetada (pontilhada) é reflexo do comportamento observado nos países seguidos. Conforme a epidemia avança
-    esse referencial pode mudar. Dependerá de nossa estratégia e atitude.
+    As projeções são obtidas a partir da trajetória observada nos três países que melhor se correlacionem com a evolução dos dados do Brasil e localidades.
+    O desenho da curva projetada (pontilhada) é reflexo do comportamento observado nos países seguidos. Conforme a epidemia avança a referência pode mudar.
 
     Outros parâmetros relevantes:
         • os valores são corrigidos por uma estimativa de subnotificação (s) calculado para duas situações:
@@ -326,28 +305,28 @@ def gerar_fig_relatorio(p1, p2, p3):
     fig.text(0.33, 0.02, equipe, family="monospace", fontsize='6', color='#ff003f', horizontalalignment='left')
 
     for i in [0, 1, 2]:
-        raw, inicio, data, nbr, subs = preparar_dados(p1)
-        correlacionados, calibrados, projetado, infos = rodar_modelo(raw, inicio, data, nbr, p2, p3, ref[i])
-
-        ax[i].set_title(ref[i], fontsize=8)
+        raw, inicio, data, nbr, subs, refs = preparar_dados(p1, uf, cidade)
+        if refs[i] == 'n/d':
+            ax[i].set_title(u"Dados não disponíveis", fontsize=8)
+            break
+        correlacionados, calibrados, projetado, infos = rodar_modelo(raw, inicio, data, nbr, p2, p3, refs[i], refs)
+        ax[i].set_title(refs[i], fontsize=8)
         ax[i].set_xlabel(u'Dias desde ' + str(p1) + ' mortes em um dia', fontsize=8)
         ax[i].set_xlim(0, calibrados.shape[0]+20)
         ax[i].set_ylabel(u'Mortes por dia', fontsize=8)
         for c in correlacionados:
             ax[i].plot(calibrados[c], linewidth=3, color="#ff7c7a")
             lvi = calibrados[c].last_valid_index()
-            if c == "China": nome = "Wuhan"
-            else: nome = c
-            ax[i].text(lvi+1, calibrados[c][lvi], nome, fontsize=6, verticalalignment="center")
-        ax[i].plot(calibrados[ref[i]], linewidth=3, color="#1f78b4")
+            ax[i].text(lvi+1, calibrados[c][lvi], c, fontsize=6, verticalalignment="center")
+        ax[i].plot(calibrados[refs[i]], linewidth=3, color="#1f78b4")
         ax[i].plot(projetado, linewidth=2, linestyle=":", color="#1f78b4")
         lvi = pd.Series(projetado).last_valid_index()
-        ax[i].text(lvi+1, projetado[lvi], ref[i], fontsize=6, verticalalignment="center")
+        ax[i].text(lvi+1, projetado[lvi], refs[i], fontsize=6, verticalalignment="center")
         # ax.legend(calibrados, fontsize=8)
         ax[i].plot(infos["index"], infos["pico"], '^', markersize=5.0, color="1", markeredgecolor="#1f78b4")
-        msg = "PICO ~" + infos["mortes_no_pico"] + " mortes em " + infos["dia_do_pico"] + " s=" + subs[ref[i]]
+        msg = "PICO ~" + infos["mortes_no_pico"] + " mortes em " + infos["dia_do_pico"] + " s=" + subs[refs[i]]
         ax[i].text(infos["index"]-1, infos["pico"]-120, msg, fontsize=7, color="#1f78b4", verticalalignment='top')
-        totais += "\n\n    " + ref[i] + "\n" + "\n".join(["    " + x[0] + ": " + str(x[1]) for x in infos['mt'].items()])
+        totais += "\n\n    " + refs[i] + "\n" + "\n".join(["    " + x[0] + ": " + str(x[1]) for x in infos['mt'].items()])
 
     fig.text(0.12, 0.42, totais, fontsize=7, verticalalignment='top', color="#1f78b4")
 
@@ -449,37 +428,22 @@ def estimar_subnotificacao(ref):
     return sub, hip
 
 
-# sub, hip = estimar_subnotificacao(ref)
-
-
-################   Para estudar e calibrar o modelo   ##########################
-
-# Macro parâmetros
-p1 = 15  # mortes no dia para iniciar série
-p2 = 3  # número de países mais correlacionados
-p3 = 5  # alisamento para o gráfico (média móvel)
-# ◔◔ {ref: https://noticias.uol.com.br/saude/ultimas-noticias/redacao/2020/04/09/covid-19-declaracoes-de-obito-apontam-48-mais-mortes-do-que-dado-oficial.htm}
-ref = "Brazil"  # escolher um entre: "SP_City", "SP", "Brazil", "Brazil_sem_SP"
-
-raw, inicio, data, nbr, subs = preparar_dados(p1)
-correlacionados, calibrados, projetado, infos = rodar_modelo(raw, inicio, data, nbr, p2, p3, ref)
-gerar_grafico(correlacionados, calibrados, projetado, infos, subs)
-
 #########################   RELATORIO   ########################################
 
-# acerte o caminho para o seu ambiente... esse aí é o meu :-)
-my_path = "/Users/tapirus/Desktop/"
-
-
-def relatorio_hoje(p1, p2, p3, my_path):
+def relatorio_hoje(p1, p2, p3, uf, cidade, my_path):
     """Calcula tudo e gera um relatorio em pdf."""
     # gera o dash do dia
-    dashboard = gerar_fig_relatorio(p1, p2, p3)
+    dashboard = gerar_fig_relatorio(p1, p2, p3, uf, cidade)
     # salva em um arquivo pdf
     hoje = str(datetime.datetime.now())[:10]
-    pp = PdfPages(my_path+"covid_dashboard_"+hoje+".pdf")
+    pp = PdfPages(my_path+"covid_dashboard_"+uf+"_"+cidade+"_"+hoje+".pdf")
     dashboard.savefig(pp, format='pdf')
     pp.close()
 
 
-relatorio_hoje(p1, p2, p3, my_path)
+# acerte o caminho para o seu ambiente... esse aí é o meu :-)
+my_path = "/Users/tapirus/Desktop/"
+# parametros do modelo: mortes para parear séries, países comparados, alisamento
+p1, p2, p3 = 15, 3, 5
+
+relatorio_hoje(p1, p2, p3, "SP", "São Paulo", my_path)

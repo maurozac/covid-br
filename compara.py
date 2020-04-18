@@ -303,9 +303,9 @@ def gerar_fig_relatorio(p1, p2, p3, uf, cidade):
     fig.subplots_adjust(bottom=0.5)
     fig.text(0.33, 0.42, notas, fontsize=7, verticalalignment='top')
     fig.text(0.33, 0.02, equipe, family="monospace", fontsize='6', color='#ff003f', horizontalalignment='left')
+    raw, inicio, data, nbr, subs, refs = preparar_dados(p1, uf, cidade)
 
     for i in [0, 1, 2]:
-        raw, inicio, data, nbr, subs, refs = preparar_dados(p1, uf, cidade)
         if refs[i] == 'n/d':
             ax[i].set_title(u"Dados não disponíveis", fontsize=8)
             break

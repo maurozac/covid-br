@@ -50,7 +50,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 __author__ = "Mauro Zackiewicz"   # codigo
 __copyright__ = "Copyright 2020"
 __license__ = "New BSD License"
-__version__ = "1.5.1"
+__version__ = "1.5.2"
 __email__ = "maurozac@gmail.com"
 __status__ = "Experimental"
 
@@ -369,19 +369,25 @@ def estimar_subnotificacao(ref):
 
     Para estimar a subnotificação adotamos as seguintes hipóteses:
 
-    I) Aproximadamente => mortes por pneumonia e insuficiencia_respiratoria seriam iguais em
+    I) mortes por pneumonia e insuficiencia_respiratoria devereriam ser APROXIMADAMENTE iguais em
     2019 e 2020
 
     II) caso a) => por causa da demora na confirmacao a morte não é notificada e os números
-    de mortes por pneumonia ou insuficiencia_respiratoria para 2020 ficam menores do que 2019.
-    A diferença seria igual ao número máximo de mortes por covid ainda não confirmadas. Esse
+    de mortes por pneumonia ou insuficiencia_respiratoria para 2020 aparecem menores do que 2019.
+    Essa diferença seria igual ao número máximo de mortes por covid ainda não confirmadas. Esse
     número corresponde ao número de mortes ainda no "limbo", sem causa morte determinada.
 
-    III) caso b) => por causa da notificação errada, o número de 2020 fica maior e a diferença
-    seria igual ao casos de covid não notificados
+    III) caso b) => por causa de notificação errada/incompleta + mortes colaterais, o número de 2020 fica maior:
+    a diferença sendo atribuída ao covid, direta ou indiretamente.
+
+    IV) os casos a) e b) seriam estratégias deliberadas e, portanto, não se ocorreriam simultaneamente
+
+    V) ok, mortes colaterais podem puxar estimativas para baixo no caso a); mas por enquanto não há
+    muito o que fazer, são ESTIMATIVAS. Fica a ressalva que s(a) pode estar sendo subestimado.
 
     Como as bases de dados são dinâmicas e os números vão mudando conforme confirmações vão
-    sendo computadas. Portanto, o coeficiente de ajuste (p4) precisa ser recalculado diariamente.
+    sendo computadas, inclusive retroativamente. Portanto, o coeficiente de subnotificação (s) precisa ser
+    recalculado diariamente.
 
     Inputs:
     .ref => sigla do estado ou calcula para Brasil
@@ -389,7 +395,7 @@ def estimar_subnotificacao(ref):
 
     Retorna: tupla
     . sub: número de casos potencialmente subnotificados
-    . hip: hipóte 'A': casos não notificados; 'B': casos notificados com outra causa
+    . hip: hipóte 'a': casos não notificados; 'b': casos notificados com outra causa
     """
 
     estados = [
@@ -418,7 +424,7 @@ def estimar_subnotificacao(ref):
     m19 = c1['chart']['2019'] + c2['chart']['2019']
     m20 = c1['chart']['2020'] + c2['chart']['2020']
 
-    if m20 < m19:   # caso a
+    if m20 <= m19:   # caso a
         sub = m19 - m20
         hip = "a"
     else:           # caso b
@@ -447,3 +453,4 @@ my_path = "/Users/tapirus/Desktop/"
 p1, p2, p3 = 15, 3, 5
 
 relatorio_hoje(p1, p2, p3, "SP", "São Paulo", my_path)
+relatorio_hoje(p1, p2, p3, "AM", "Manaus", my_path)

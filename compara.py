@@ -83,6 +83,9 @@ def preparar_dados(p1, uf="SP", cidade=u"São Paulo"):
     raw = raw.drop(columns='date')
     raw = raw.drop(columns='World')
 
+    # para ver tbem os dados "oficias"
+    para_oficial = raw['Brazil']
+
     # correcao de subnotificacao Brasil:
     sub, hip = estimar_subnotificacao('Brasil')
     p4br = ((sub + raw['Brazil'].sum()) / raw['Brazil'].sum())
@@ -92,9 +95,11 @@ def preparar_dados(p1, uf="SP", cidade=u"São Paulo"):
     subs = {"Brasil": str(round(p4br, 1)) + " (" + hip + ")"}
 
     # contruir base para a tabela "data"
-    inicio = raw.ge(p1).idxmax()  # ◔◔ {encontra os index de qdo cada pais alcança 3}
+    inicio = raw.ge(p1).idxmax()  # ◔◔ {encontra os index de qdo cada pais alcança p1}
     data = pd.DataFrame({'Brasil':raw['Brasil'][inicio['Brasil']:]}).reset_index().drop(columns='index')
     nbr = data.shape[0]
+
+    oficial = pd.DataFrame({'Brasil':para_oficial[inicio['Brasil']:]}).reset_index().drop(columns='index')
 
     # dados Brasil
     estados = [
@@ -116,6 +121,7 @@ def preparar_dados(p1, uf="SP", cidade=u"São Paulo"):
     uf_mortes = [uf_mortes[i] - uf_mortes[i+1] for i in range(len(uf_mortes)-1)]
     uf_mortes += [0 for _ in range(nbr-len(uf_mortes))]  # corrigir tamanho
     uf_mortes.reverse()
+    oficial[uf] = pd.Series(uf_mortes).values
 
     sub_uf, hip_uf = estimar_subnotificacao(uf)
     p4uf = ((sub_uf + pd.Series(uf_mortes).values.sum())/pd.Series(uf_mortes).values.sum())
@@ -131,6 +137,7 @@ def preparar_dados(p1, uf="SP", cidade=u"São Paulo"):
         cidade_mortes.reverse()
         if sum(cidade_mortes):
             # subnotificacao para cidade => aprox pela do estado
+            oficial[cidade] = pd.Series(cidade_mortes).values
             data[cidade] = pd.Series(cidade_mortes).values * p4uf
             subs[cidade] = str(round(p4uf, 1)) + " (" + hip_uf + ")"
         else:
@@ -151,7 +158,7 @@ def preparar_dados(p1, uf="SP", cidade=u"São Paulo"):
         C = raw[k][inicio[k]:inicio[k]+nbr]
         data[k] = C.values
 
-    return raw, inicio, data, nbr, subs, refs
+    return raw, inicio, data, nbr, subs, refs, oficial
 
 
 def rodar_modelo(raw, inicio, data, nbr, p2, p3, ref, refs):
@@ -303,7 +310,7 @@ def gerar_fig_relatorio(p1, p2, p3, uf, cidade):
     fig.subplots_adjust(bottom=0.5)
     fig.text(0.33, 0.42, notas, fontsize=7, verticalalignment='top')
     fig.text(0.33, 0.02, equipe, family="monospace", fontsize='6', color='#ff003f', horizontalalignment='left')
-    raw, inicio, data, nbr, subs, refs = preparar_dados(p1, uf, cidade)
+    raw, inicio, data, nbr, subs, refs, oficial = preparar_dados(p1, uf, cidade)
 
     for i in [0, 1, 2]:
         if refs[i] == 'n/d':
@@ -322,10 +329,11 @@ def gerar_fig_relatorio(p1, p2, p3, uf, cidade):
         ax[i].plot(projetado, linewidth=2, linestyle=":", color="#1f78b4")
         lvi = pd.Series(projetado).last_valid_index()
         ax[i].text(lvi+1, projetado[lvi], refs[i], fontsize=6, verticalalignment="center")
-        # ax.legend(calibrados, fontsize=8)
         ax[i].plot(infos["index"], infos["pico"], '^', markersize=5.0, color="1", markeredgecolor="#1f78b4")
         msg = "PICO ~" + infos["mortes_no_pico"] + " mortes em " + infos["dia_do_pico"] + " s=" + subs[refs[i]]
         ax[i].text(infos["index"]-1, infos["pico"]-120, msg, fontsize=7, color="#1f78b4", verticalalignment='top')
+        ax[i].plot(oficial[refs[i]], linewidth=1, linestyle="--", color="#1f78b4")
+        ax[i].text(oficial.shape[0]+1, list(oficial[refs[i]])[-1], 'oficial', fontsize=6, verticalalignment="center")
         totais += "\n\n    " + refs[i] + "\n" + "\n".join(["    " + x[0] + ": " + str(x[1]) for x in infos['mt'].items()])
 
     fig.text(0.12, 0.42, totais, fontsize=7, verticalalignment='top', color="#1f78b4")

@@ -161,6 +161,7 @@ def preparar_dados(p1, uf="SP", cidade=u"São Paulo"):
     return raw, inicio, data, nbr, subs, refs, oficial
 
 
+
 def rodar_modelo(raw, inicio, data, nbr, p2, p3, ref, refs):
     """
     Usa os dados preparados para gerar dados para visualização e a projeção da
@@ -183,6 +184,7 @@ def rodar_modelo(raw, inicio, data, nbr, p2, p3, ref, refs):
     # ◔◔ {mas caso você ache que vale a pena alisar antes, use o codigo abaixo}
     # alisamento para os casos de morte reportados (média móvel)
     # data = data.rolling(5).mean()
+    data = data.drop(columns='Brazil')
 
     # calcular a matriz de correlações:
     pearson = data.corr()
@@ -458,7 +460,29 @@ def relatorio_hoje(p1, p2, p3, uf, cidade, my_path):
 # acerte o caminho para o seu ambiente... esse aí é o meu :-)
 my_path = "/Users/tapirus/Desktop/"
 # parametros do modelo: mortes para parear séries, países comparados, alisamento
-p1, p2, p3 = 15, 3, 5
+p1, p2, p3 = 15, 3, 7
 
 relatorio_hoje(p1, p2, p3, "SP", "São Paulo", my_path)
 relatorio_hoje(p1, p2, p3, "AM", "Manaus", my_path)
+
+
+
+###########################
+
+http://gabgoh.github.io/COVID/index.html?
+
+CFR=0.02
+&D_hospital_lag=5
+&D_incbation=5.2
+&D_infectious=2.9
+&D_recovery_mild=11.1
+&D_recovery_severe=28.6
+&I0=1
+&InterventionAmt=0.5 # Rt
+&InterventionTime=81.7244
+&P_SEVERE=0.2
+&R0=2.41
+&Time_to_death=32
+&logN=15.761420707019587
+
+http://gabgoh.github.io/COVID/index.html?CFR=0.02&D_hospital_lag=5&D_incbation=5.2&D_infectious=2.9&D_recovery_mild=11.1&D_recovery_severe=28.6&I0=1&InterventionAmt=0.45&InterventionTime=100&P_SEVERE=0.2&R0=2.2&RT=1&Time_to_death=32&logN=15.761420707019587

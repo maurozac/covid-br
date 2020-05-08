@@ -184,7 +184,8 @@ def rodar_modelo(raw, inicio, data, nbr, p2, p3, ref, refs):
     # ◔◔ {mas caso você ache que vale a pena alisar antes, use o codigo abaixo}
     # alisamento para os casos de morte reportados (média móvel)
     # data = data.rolling(5).mean()
-    data = data.drop(columns='Brazil')
+    try: data = data.drop(columns='Brazil')
+    except: pass
 
     # calcular a matriz de correlações:
     pearson = data.corr()

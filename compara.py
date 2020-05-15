@@ -322,7 +322,7 @@ def gerar_fig_relatorio(p1, p2, p3, uf, cidade):
         correlacionados, calibrados, projetado, infos = rodar_modelo(raw, inicio, data, nbr, p2, p3, refs[i], refs)
         ax[i].set_title(refs[i], fontsize=8)
         ax[i].set_xlabel(u'Dias desde ' + str(p1) + ' mortes em um dia', fontsize=8)
-        ax[i].set_xlim(0, calibrados.shape[0]+20)
+        ax[i].set_xlim(0, calibrados.shape[0]+25)
         ax[i].set_ylabel(u'Mortes por dia', fontsize=8)
         for c in correlacionados:
             ax[i].plot(calibrados[c], linewidth=3, color="#ff7c7a")
@@ -409,6 +409,7 @@ def estimar_subnotificacao(ref):
     . hip: hipóte 'a': casos não notificados; 'b': casos notificados com outra causa
     """
 
+    sub, hip = 1, "ø"
     estados = [
         'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS',
         'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC',
@@ -429,18 +430,21 @@ def estimar_subnotificacao(ref):
     call_1 = api + "&causa=insuficiencia_respiratoria"
     call_2 = api + "&causa=pneumonia"
 
-    c1 = requests.get(call_1).json()
-    c2 = requests.get(call_2).json()
+    try:
+        c1 = requests.get(call_1).json()
+        c2 = requests.get(call_2).json()
 
-    m19 = c1['chart']['2019'] + c2['chart']['2019']
-    m20 = c1['chart']['2020'] + c2['chart']['2020']
+        m19 = c1['chart']['2019'] + c2['chart']['2019']
+        m20 = c1['chart']['2020'] + c2['chart']['2020']
 
-    if m20 <= m19:   # caso a
-        sub = m19 - m20
-        hip = "a"
-    else:           # caso b
-        sub = m20 - m19
-        hip = "b"
+        if m20 <= m19:   # caso a
+            sub = m19 - m20
+            hip = "a"
+        else:           # caso b
+            sub = m20 - m19
+            hip = "b"
+    except:
+        print("[!] FALHA em registrocivil.org.br")
 
     return sub, hip
 
@@ -465,3 +469,4 @@ p1, p2, p3 = 15, 3, 7
 
 relatorio_hoje(p1, p2, p3, "SP", "São Paulo", my_path)
 relatorio_hoje(p1, p2, p3, "AM", "Manaus", my_path)
+

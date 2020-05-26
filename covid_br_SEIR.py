@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
-Modelagem em tempo real | COVID-19 no Brasil
+Modelo SEIR | Evolução do R0 | COVID-19 no Brasil
 --------------------------------------------
 
 Ideias e modelagens desenvolvidas pela trinca:
@@ -9,27 +9,7 @@ Ideias e modelagens desenvolvidas pela trinca:
 . Luiz Antonio Tozi
 . Rubens Monteiro Luciano
 
-Esta modelagem possui as seguintes características:
 
-a) NÃO seguimos modelos paramétricos => Não existem durante a epidemia dados
-suficientes ou confiáveis para alimentar modelos epidemiológicos como a excelente
-calaculadora http://gabgoh.github.io/COVID/index.html (ela serve para gerar cená-
-rios e para modelar a epidemia DEPOIS que ela passar). Além disso, a natureza
-exponencial das curvas as torna extremamente sensíveis aos parâmetros que a defi-
-nem. Isso faz com que a confiabilidade preditiva desses modelos seja ilusória.
-
-b) A evolução epidemia no Brasil começou depois da de outros países. Nossa mode-
-lagem se apoia nesse fato. Com os dados disponíveis, procuramos no instante pre-
-sente determinar quem estamos seguindo, ou seja, que países mais se pareceram
-conosco passado o mesmo período de disseminação. A partir do que aconteceu nesses
-países projetamos o que pode acontecer aqui.
-
-c) Esta conta é refeita dia a dia. Dependendo de nossa competência em conter ou
-não a disseminação do Covid-19 nos aproximaremos dos países que melhor ou pior
-lidaram com a epidemia e a projeção refletirá essa similaridade.
-
-d) As decisões de modelagem são indicadas no código com os zoinhos: # ◔◔ {...}
-São pontos de partida para discutir a modelagem e propor alternativas.
 
 """
 
@@ -141,94 +121,6 @@ def preparar_dados(uf="SP", cidade=u"São Paulo"):
         data[k] = C.values
 
     return raw, data, nbr, refs, dti, popu
-
-
-def gerar_fig_relatorio(p1, p2, p3, uf, cidade):
-    """Roda vários cenários e monta mosaico de gráficos + notas."""
-
-    notas = u"""
-    Sobre o modelo e as estimativas:
-
-    As projeções são obtidas a partir da trajetória observada nos três países que melhor se correlacionem com a evolução dos dados do Brasil e localidades.
-    O desenho da curva projetada (pontilhada) é reflexo do comportamento observado nos países seguidos. Conforme a epidemia avança a referência pode mudar.
-
-    Outros parâmetros relevantes:
-        • os valores são corrigidos por uma estimativa de subnotificação (s) calculado para duas situações:
-            (a) mortes suspeitas aguardando confirmação e ainda não notificadas
-            (b) mortes potencialmente devido à Covid-19 notificadas como devidas a outras causas
-        • as curvas dos diferentes lugares são emparelhadas a partir do dia em que ocorrem N ou mais mortes (eixo x).
-        • as curvas são alisadas (médias móveis), por isso não iniciam no dia zero. O alisamento permite melhor visualização das curvas mas pode gerar algum
-        desvio com relação aos número diários absolutos.
-        • as projeções são recalculadas diariamente e podem sofrer alterações significativas em função das novas informações incorporadas.
-
-    Fontes dos dados:
-        https://covid.ourworldindata.org
-        https://brasil.io
-        https://transparencia.registrocivil.org.br
-    """
-
-    equipe = u'  M.Zac | L.Tozi | R.Luciano || https://github.com/Maurozac/covid-br/blob/master/compara.py'
-
-    totais = u"""
-    Mortes estimadas (acumulado)"""
-
-    hoje = str(datetime.datetime.now())[:16]
-    fig, ax = plt.subplots(1, 3, figsize=(12, 6), sharex=True, sharey=True)
-    fig.suptitle(u"Projeção da epidemia Covid-19" +  " | " + hoje, fontsize=12)
-    fig.subplots_adjust(bottom=0.5)
-    fig.text(0.33, 0.42, notas, fontsize=7, verticalalignment='top')
-    fig.text(0.33, 0.02, equipe, family="monospace", fontsize='6', color='#ff003f', horizontalalignment='left')
-    raw, inicio, data, nbr, subs, refs, oficial = preparar_dados(p1, uf, cidade)
-
-    for i in [0, 1, 2]:
-        if refs[i] == 'n/d':
-            ax[i].set_title(u"Dados não disponíveis", fontsize=8)
-            break
-        correlacionados, calibrados, projetado, infos = rodar_modelo(raw, inicio, data, nbr, p2, p3, refs[i], refs)
-        ax[i].set_title(refs[i], fontsize=8)
-        ax[i].set_xlabel(u'Dias desde ' + str(p1) + ' mortes em um dia', fontsize=8)
-        ax[i].set_xlim(0, calibrados.shape[0]+25)
-        ax[i].set_ylabel(u'Mortes por dia', fontsize=8)
-        for c in correlacionados:
-            ax[i].plot(calibrados[c], linewidth=3, color="#ff7c7a")
-            lvi = calibrados[c].last_valid_index()
-            ax[i].text(lvi+1, calibrados[c][lvi], c, fontsize=6, verticalalignment="center")
-        ax[i].plot(calibrados[refs[i]], linewidth=3, color="#1f78b4")
-        # ax[i].plot(projetado, linewidth=2, linestyle=":", color="#1f78b4")
-        # lvi = pd.Series(projetado).last_valid_index()
-        # ax[i].text(lvi+1, projetado[lvi], refs[i], fontsize=6, verticalalignment="center")
-        # ax[i].plot(infos["index"], infos["pico"], '^', markersize=5.0, color="1", markeredgecolor="#1f78b4")
-        # msg = "PICO ~" + infos["mortes_no_pico"] + " mortes em " + infos["dia_do_pico"] + " s=" + subs[refs[i]]
-        # ax[i].text(infos["index"]-1, infos["pico"]-120, msg, fontsize=7, color="#1f78b4", verticalalignment='top')
-        ax[i].plot(oficial[refs[i]], linewidth=1, linestyle="--", color="#1f78b4")
-        ax[i].text(oficial.shape[0]+1, list(oficial[refs[i]])[-1], 'oficial', fontsize=6, verticalalignment="center")
-        totais += "\n\n    " + refs[i] + "\n" + "\n".join(["    " + x[0] + ": " + str(x[1]) for x in infos['mt'].items()])
-
-    fig.text(0.12, 0.42, totais, fontsize=7, verticalalignment='top', color="#1f78b4")
-
-    return fig
-
-
-#########################   RELATORIO   ########################################
-
-def relatorio_hoje(p1, p2, p3, uf, cidade, my_path):
-    """Calcula tudo e gera um relatorio em pdf."""
-    # gera o dash do dia
-    dashboard = gerar_fig_relatorio(p1, p2, p3, uf, cidade)
-    # salva em um arquivo pdf
-    hoje = str(datetime.datetime.now())[:10]
-    pp = PdfPages(my_path+"covid_dashboard_"+uf+"_"+cidade+"_"+hoje+".pdf")
-    dashboard.savefig(pp, format='pdf')
-    pp.close()
-
-
-# acerte o caminho para o seu ambiente... esse aí é o meu :-)
-my_path = "/Users/tapirus/Desktop/"
-# parametros do modelo: mortes para parear séries, países comparados, alisamento
-p1, p2, p3 = 15, 3, 7
-
-relatorio_hoje(p1, p2, p3, "AM", "Manaus", my_path)
-relatorio_hoje(p1, p2, p3, "SP", "São Paulo", my_path)
 
 
 #########################   SEIR   ########################################
@@ -428,7 +320,7 @@ def gerar_fig_relatorio(uf, cidade):
     axR.set_xticklabels([str(x) for x in range(35,-1,-5)])
 
     print("[-~-] Calculando evolução de R-zero (aguarde)")
-    paleta = ["#2693DC", "#1f78b4", "#175C8B"]
+    paleta = ["#9EC5DE", "#5E9EC9", "#1f78b4"]
     for ref in refs:
         print("[*] "+ref)
         cor = paleta.pop()
@@ -442,3 +334,24 @@ def gerar_fig_relatorio(uf, cidade):
 
 gerar_fig_relatorio("SP", "São Paulo")
 gerar_fig_relatorio('RJ', "Rio de Janeiro")
+gerar_fig_relatorio('AM', "Manaus")
+
+
+#########################   RELATORIO   ########################################
+
+def relatorio_hoje(uf, cidade, my_path):
+    """Calcula tudo e gera um relatorio em pdf."""
+    # gera o dash do dia
+    dashboard = gerar_fig_relatorio(uf, cidade)
+    # salva em um arquivo pdf
+    hoje = str(datetime.datetime.now())[:10]
+    pp = PdfPages(my_path+"covid_dashboard_"+uf+"_"+cidade+"_"+hoje+".pdf")
+    dashboard.savefig(pp, format='pdf')
+    pp.close()
+
+
+# acerte o caminho para o seu ambiente... esse aí é o meu :-)
+my_path = "/Users/tapirus/Desktop/"
+
+relatorio_hoje("AM", "Manaus", my_path)
+relatorio_hoje("SP", "São Paulo", my_path)

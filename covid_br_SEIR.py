@@ -131,6 +131,7 @@ LETAL = 0.011  # taxa de letalidade 1.1% segundo informed guess
 ISOLA = 0.43  # taxa de isolamento => 0: sem isolamento; 1: lockdown completo
 # Não usar ISOLA = 1 => quebra o modelo (div by zero)
 INICIAL = 1  # condição de contorno para iniciar modelo: mortes por milhão de habitantes
+SUB = 0.2   # taxa de mortes não notificadas => real = dado/(1-sub) 
 
 
 def base_seir_model(init_vals, params, t):
@@ -171,6 +172,7 @@ def rodar_SEIR(beta, popu, real):
     """
     # parametros
     N = popu * (1 - ISOLA)  # populacao, descontados os isolados
+    real = real/(1-SUB)     # ajuste para compensar subnotificao das mortes
     params = (ALPHA, beta, GAMMA)
     # valores iniciais para S, E, I, R [normalizados]
     # algumas suposições simplificadoras ocorrem aqui => é uma parte sensivel do modelo
@@ -206,9 +208,10 @@ def projetar_mortes_com_SEIR(beta, popu, real, ref):
     M = [x[2]*popu*(1-ISOLA)*LETAL for x in seir]
     d = len(real) - i
     # qualidade do ajuste
+    real = real/(1-SUB)     # ajuste para compensar subnotificao das mortes
     par = pd.DataFrame([
         M[:d],
-        real[i:]
+        real[i:]  # nao precisaria corrigir por sub, é transformação linear
     ])
     co = par.T.corr()[1][0]
     print("[*] Correlação entre Modelo e dados reais (" + ref + "):", co)
@@ -231,8 +234,9 @@ def ajustar(B, popu, real):
     # mortes via modelo => Infectados * popu * letalidade * isolamento
     M = [x[2]*popu*(1-ISOLA)*LETAL for x in seir]
     d = len(real) - i
+    real = real/(1-SUB)     # ajuste para compensar subnotificao das mortes
 
-    return abs(sum(real[i:])-sum(M[:d]))
+    return abs(sum(real[i:]) - sum(M[:d]))
 
 
 # args = popu['Brasil'], data['Brasil']
@@ -246,7 +250,7 @@ def beta_evolution(popu, real, k=30):
     Retorna List com k betas.
     """
     rs = []
-    for t in range(-k,0,1):
+    for t in range(-k, 0, 1):
         args = popu, real.head(t)
         b = minimize(ajustar, np.array([1.75]), args=args, bounds=[(0.1,5)])
         rs.append(b.x[0])
@@ -262,7 +266,9 @@ def gerar_fig_relatorio(uf, cidade):
     Projeções pelo modelo epidemiológico SEIR (Susceptíveis, Expostos, Infectados,
     Recuperados)
 
-    • taxa de isolamento: """+str(ISOLA)+"""
+    • taxa de isolamento: """+str(int(ISOLA*100))+"""%
+    • taxa de letalidade: """+str(round(LETAL*100, 2))+"""%
+    • mortes não contabilizadas: """+str(int(SUB*100))+"""%
 
     Fontes dos dados:
         https://covid.ourworldindata.org
@@ -316,7 +322,8 @@ def gerar_fig_relatorio(uf, cidade):
         }
         totais += "\n\n    " + ref + "\n" + "\n".join(["    " + x[0] + ": " + str(x[1]) for x in projes.items()])
         # dados reais
-        ax[i].plot(data[ref].rolling(alisa).mean(), linewidth=5, color="#1f78b4")
+        reais = data[ref]/(1-SUB)     # ajuste para compensar subnotificao das mortes
+        ax[i].plot(reais.rolling(alisa).mean(), linewidth=5, color="#1f78b4")
         # projeções
         for o in [0, 7, 14, 21, 28, 35]:
             ax[i].plot(nbr+o-1, M[nbr+o-1], 'o', markersize=5.0, color="whitesmoke", markeredgecolor="#1f78b4")
@@ -357,6 +364,6 @@ def relatorio_hoje(uf, cidade, my_path):
 # acerte o caminho para o seu ambiente... esse aí é o meu :-)
 my_path = "/Users/tapirus/Desktop/"
 
-# relatorio_hoje("AM", "Manaus", my_path)
+relatorio_hoje("AM", "Manaus", my_path)
 relatorio_hoje("SP", "São Paulo", my_path)
 relatorio_hoje("RJ", "Rio de Janeiro", my_path)

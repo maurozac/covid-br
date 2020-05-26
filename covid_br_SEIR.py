@@ -9,6 +9,9 @@ Ideias e modelagens desenvolvidas pela trinca:
 . Luiz Antonio Tozi
 . Rubens Monteiro Luciano
 
+Sobre o modelo SEIR
+https://en.wikipedia.org/wiki/Compartmental_models_in_epidemiology#The_SEIR_model
+
 
 
 """
@@ -160,10 +163,13 @@ def ajustar(B, popu, real):
     params = (alpha, beta, gamma)
 
     # valores iniciais para S, E, I, R [normalizados]
-    m = 0
+    # algumas suposições simplificadoras ocorrem aqui => é uma parte sensivel do modelo
+    m = 0  # mortes acumuladas até o dia i
+    # m muito baixo => muito ruido na serie inicial de dados
+    # m muito alto => suposicoes de partida para os coeficiente do modelo ficam ruins
     for i in range(1, len(real)):
         m = real.head(i).sum()
-        if m > N * 0.000001:
+        if m > N * 0.000001:  # >1 morte por milhão de habitantes
             break
 
     S_0 = 1 - (m/letal)/N   # susceptiveis: todos - E [aproximado por todos - I]
@@ -185,10 +191,10 @@ def ajustar(B, popu, real):
     return abs(sum(real[i:])-sum(M[:d]))
     # return abs(sum(real[i:].rolling(7).mean().fillna(0.0))-sum(M[1:d+1]))
 
-
-args = popu['Brasil'], data['Brasil']
-b = minimize(ajustar, np.array([1.75]), args=args, bounds=[(0.1,5)])
-b.x[0]/gamma
+# 
+# args = popu['Brasil'], data['Brasil']
+# b = minimize(ajustar, np.array([1.75]), args=args, bounds=[(0.1,5)])
+# b.x[0]/gamma
 
 
 def beta_evolution(popu, real):
@@ -212,8 +218,7 @@ def projetar_SEIR(beta, popu, real, ref):
     # R0 = beta/gamma
 
     # valores iniciais para S, E, I, R [normalizados]
-    # algumas suposições simplificadoras ocorrem aqui,
-    # encontrar ponto em que soma das mortes ultrapassou 50
+    # algumas suposições simplificadoras ocorrem aqui => é uma parte sensivel do modelo
     m = 0
     for i in range(1, len(real)):
         m = real.head(i).sum()
@@ -331,11 +336,11 @@ def gerar_fig_relatorio(uf, cidade):
 
     return fig
 
-
-gerar_fig_relatorio("SP", "São Paulo")
-gerar_fig_relatorio('RJ', "Rio de Janeiro")
-gerar_fig_relatorio('AM', "Manaus")
-
+# 
+# gerar_fig_relatorio("SP", "São Paulo")
+# gerar_fig_relatorio('RJ', "Rio de Janeiro")
+# gerar_fig_relatorio('AM', "Manaus")
+# 
 
 #########################   RELATORIO   ########################################
 
@@ -353,5 +358,5 @@ def relatorio_hoje(uf, cidade, my_path):
 # acerte o caminho para o seu ambiente... esse aí é o meu :-)
 my_path = "/Users/tapirus/Desktop/"
 
-relatorio_hoje("AM", "Manaus", my_path)
+# relatorio_hoje("AM", "Manaus", my_path)
 relatorio_hoje("SP", "São Paulo", my_path)

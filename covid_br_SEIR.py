@@ -12,8 +12,6 @@ Ideias e modelagens desenvolvidas pela trinca:
 Sobre o modelo SEIR
 https://en.wikipedia.org/wiki/Compartmental_models_in_epidemiology#The_SEIR_model
 
-
-
 """
 
 import datetime
@@ -45,7 +43,6 @@ def preparar_dados(uf="SP", cidade=u"São Paulo"):
     Fontes:
     . Mundo: https://covid.ourworldindata.org
     . Brasil: https://brasil.io
-
     Retorna:
     raw <DataFrame> | Série completa do número de mortes/dia por país, sem trans-
         posição temporal
@@ -63,7 +60,6 @@ def preparar_dados(uf="SP", cidade=u"São Paulo"):
     # raw_soma = pd.read_csv("https://covid.ourworldindata.org/data/ecdc/total_deaths.csv").fillna(0.0)
     tempo = raw['date']
     raw = raw.drop(columns='date')
-    raw = raw.drop(columns='World')
     raw['Brasil'] = raw['Brazil']
     # contruir base para a tabela "data"
     inicio = raw.ge(1).idxmax()  # ◔◔ {encontra os index de qdo cada pais alcança p1}
@@ -77,7 +73,6 @@ def preparar_dados(uf="SP", cidade=u"São Paulo"):
         'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC',
         'SP', 'SE', 'TO',
         ]
-
     if uf not in estados or type(uf) is not str:
         uf = "SP"
         print(uf, u": UF inválida, calculando para 'SP'")
@@ -116,24 +111,39 @@ def preparar_dados(uf="SP", cidade=u"São Paulo"):
             print(d)
 
     refs = ['Brasil', uf, cidade] # as referencias validas...
-    # adicionar dados dos países à frente ou pareados ao Brasil
-    for k in inicio.keys():
-        if k == "Brasil": continue
-        if inicio[k] == 0 or inicio[k] > inicio["Brasil"]: continue
-        C = raw[k][inicio[k]:inicio[k]+nbr]
-        data[k] = C.values
 
     return raw, data, nbr, refs, dti, popu
 
 
 #########################   SEIR   ########################################
 
-# https://towardsdatascience.com/social-distancing-to-slow-the-coronavirus-768292f04296
+"""
+Parâmetros GLOBAIS do MODELO SEIR
+
+Gamma vem de um paper: https://arxiv.org/pdf/2002.06563.pdf
+Letalidade estimada por países que testaram exaustivamente: 1,1%
+
+"""
+
+ALPHA = 0.2  # 1/α Incubation period = 5 days
+GAMMA = 0.5  # 1/γ value of 2 days, so γ = 0.5
+LETAL = 0.011  # taxa de letalidade 1.1% segundo informed guess
+ISOLA = 0.43  # taxa de isolamento => 0: sem isolamento; 1: lockdown completo
+# Não usar ISOLA = 1 => quebra o modelo (div by zero)
+INICIAL = 1  # condição de contorno para iniciar modelo: mortes por milhão de habitantes
+
 
 def base_seir_model(init_vals, params, t):
+    """
+    RODA incrementos discretos no sistema de equações diferenciais
+    RETORNA numpy stack com shape: (t, 4), com t: número de incrementos (dias) # -*- coding: utf-8 -*-
+    para as curvas S, E, I, R.
+    Código segundo proposta de:
+    https://towardsdatascience.com/social-distancing-to-slow-the-coronavirus-768292f04296
+    """
     S_0, E_0, I_0, R_0 = init_vals
     S, E, I, R = [S_0], [E_0], [I_0], [R_0]
-    alpha, beta, gamma = params
+    ALPHA, beta, GAMMA = params
     """
     α is the inverse of the incubation period (1/t_incubation)
     β is the average contact rate in the population
@@ -142,9 +152,9 @@ def base_seir_model(init_vals, params, t):
     dt = t[1] - t[0]
     for _ in t[1:]:
         next_S = S[-1] - (beta * S[-1] * I[-1]) * dt
-        next_E = E[-1] + (beta * S[-1] * I[-1] - alpha * E[-1]) * dt
-        next_I = I[-1] + (alpha * E[-1] - gamma * I[-1]) * dt
-        next_R = R[-1] + (gamma * I[-1]) * dt
+        next_E = E[-1] + (beta * S[-1] * I[-1] - ALPHA * E[-1]) * dt
+        next_I = I[-1] + (ALPHA * E[-1] - GAMMA * I[-1]) * dt
+        next_R = R[-1] + (GAMMA * I[-1]) * dt
         S.append(next_S)
         E.append(next_E)
         I.append(next_I)
@@ -153,15 +163,15 @@ def base_seir_model(init_vals, params, t):
     return np.stack([S, E, I, R]).T
 
 
-def ajustar(B, popu, real):
+def rodar_SEIR(beta, popu, real):
+    """Prepara dados de entrada do modelo SEIR e o executa.
+    Modelos exponenciais são muito sensíveis às condições iniciais,
+    as hipóteses e aproximações assumidas aqui são importantes.
+    RETORNA: resultado do modelo SEIR
+    """
     # parametros
-    letal = 0.011  # taxa de mortalidade
-    beta = B[0]
-    N = popu   # populacao
-    alpha = 0.2  # Incubation period = 5 days
-    gamma = 0.5  # 1/γ value of 2 days, so γ = 0.5 => vem de um paper: https://arxiv.org/pdf/2002.06563.pdf
-    params = (alpha, beta, gamma)
-
+    N = popu * (1 - ISOLA)  # populacao, descontados os isolados
+    params = (ALPHA, beta, GAMMA)
     # valores iniciais para S, E, I, R [normalizados]
     # algumas suposições simplificadoras ocorrem aqui => é uma parte sensivel do modelo
     m = 0  # mortes acumuladas até o dia i
@@ -169,77 +179,31 @@ def ajustar(B, popu, real):
     # m muito alto => suposicoes de partida para os coeficiente do modelo ficam ruins
     for i in range(1, len(real)):
         m = real.head(i).sum()
-        if m > N * 0.000001:  # >1 morte por milhão de habitantes
+        if m > N * (INICIAL * 0.000001):  # mortes por milhão de habitantes
             break
 
-    S_0 = 1 - (m/letal)/N   # susceptiveis: todos - E [aproximado por todos - I]
-    E_0 = (m/letal)/N * (beta/gamma)   # E > I => E ~ I*R0
-    I_0 = (m/letal)/N   # infectados: mortos/letalidade
-    R_0 = 0       # recuperados: ~ 0
+    S_0 = 1 - (m/LETAL)/N   # susceptiveis: todos - E [aproximado por todos - I]
+    E_0 = (m/LETAL)/N * (beta/GAMMA)   # E > I => E ~ I*R0
+    I_0 = (m/LETAL)/N   # infectados: ~mortos/letalidade
+    R_0 = 0       # recuperados: ~0
     init_vals = (S_0, E_0, I_0, R_0)
-
-    # eixo X
-    t_max = 200
-    dt = 1
-    t = np.linspace(i, t_max, int(t_max/dt) + 1)
-
-    results = base_seir_model(init_vals, params, t)
-
-    M = [x[2]*N*letal for x in results]
-    d = len(real) - i
-
-    return abs(sum(real[i:])-sum(M[:d]))
-    # return abs(sum(real[i:].rolling(7).mean().fillna(0.0))-sum(M[1:d+1]))
-
-# 
-# args = popu['Brasil'], data['Brasil']
-# b = minimize(ajustar, np.array([1.75]), args=args, bounds=[(0.1,5)])
-# b.x[0]/gamma
-
-
-def beta_evolution(popu, real):
-    rs = []
-    for t in range(-30,0,1):
-        args = popu, real.head(t)
-        b = minimize(ajustar, np.array([1.75]), args=args, bounds=[(0.1,5)])
-        rs.append(b.x[0])
-    return rs
-
-# beta_evolution(popu['Brasil'], data['Brasil'])
-
-
-def projetar_SEIR(beta, popu, real, ref):
-    # parametros do modelo
-    N = popu   # populacao
-    letal = 0.011  # taxa de letalidade 1.1% segundo informed guess
-    alpha = 0.2  # Incubation period = 5 days
-    gamma = 0.5  # 1/γ value of 2 days, so γ = 0.5 => vem de um paper: https://arxiv.org/pdf/2002.06563.pdf
-    params = (alpha, beta, gamma)
-    # R0 = beta/gamma
-
-    # valores iniciais para S, E, I, R [normalizados]
-    # algumas suposições simplificadoras ocorrem aqui => é uma parte sensivel do modelo
-    m = 0
-    for i in range(1, len(real)):
-        m = real.head(i).sum()
-        if m > N * 0.000001:
-            break
-
-    S_0 = 1 - (m/letal)/N   # susceptiveis: todos - E [aproximado por todos - I]
-    E_0 = (m/letal)/N * (beta/gamma)   # E > I => E ~ I*R0
-    I_0 = (m/letal)/N   # infectados: mortos/letalidade
-    R_0 = 0       # recuperados: 0
-    init_vals = (S_0, E_0, I_0, R_0)
-
     # eixo x
     t_max = 200     # dias
     dt = 1
     t = np.linspace(i, t_max, int(t_max/dt) + 1)
+    # seir => np.array([S,E,I,R])
+    seir = base_seir_model(init_vals, params, t)
 
-    results = base_seir_model(init_vals, params, t)
+    return seir
 
-    # mortes via modelo => Infectados * popu * letalidade
-    M = [x[2]*N*letal for x in results]
+
+def projetar_mortes_com_SEIR(beta, popu, real, ref):
+    """Roda modelo e avalia qualidade do ajuste com dados reais
+    RETORNA np array com curva modelada para mortes
+    """
+    seir = rodar_SEIR(beta, popu, real)
+    # mortes via modelo => Infectados * (popu * isolamento) * letalidade
+    M = [x[2]*popu*(1-ISOLA)*LETAL for x in seir]
     d = len(real) - i
     # qualidade do ajuste
     par = pd.DataFrame([
@@ -249,15 +213,56 @@ def projetar_SEIR(beta, popu, real, ref):
     co = par.T.corr()[1][0]
     print("[*] Correlação entre Modelo e dados reais (" + ref + "):", co)
 
-    return np.hstack((np.zeros(i) + np.nan, np.array(M)))
+    # adiciona i células vazias (NAN) no início para alinhar corretamente no eixo x
+    mortes_teoricas = np.hstack((np.zeros(i) + np.nan, np.array(M)))
 
-## GRAF
+    return mortes_teoricas
+
+
+def ajustar(B, popu, real):
+    """Função no formato esperado por scipy.optimize.minimize para rodar o
+    modelo SEIR e buscar ajuste.
+    A variável a ser minimizada é a diferença absoluta entre o total de mortes
+    observados e previstos => deve tender a zero
+    """
+    # parametros
+    beta = B[0]  # scipy.optimize.minimize requer entrada de np.array([p0,...])
+    seir = rodar_SEIR(beta, popu, real)
+    # mortes via modelo => Infectados * popu * letalidade * isolamento
+    M = [x[2]*popu*(1-ISOLA)*LETAL for x in seir]
+    d = len(real) - i
+
+    return abs(sum(real[i:])-sum(M[:d]))
+
+
+# args = popu['Brasil'], data['Brasil']
+# b = minimize(ajustar, np.array([1.75]), args=args, bounds=[(0.1,5)])
+# b.x[0]/GAMMA
+
+
+def beta_evolution(popu, real, k=30):
+    """Roda sucessivos ajuste para determinar beta nos últimos k dias.
+    k padrão é 30
+    Retorna List com k betas.
+    """
+    rs = []
+    for t in range(-k,0,1):
+        args = popu, real.head(t)
+        b = minimize(ajustar, np.array([1.75]), args=args, bounds=[(0.1,5)])
+        rs.append(b.x[0])
+    return rs
+
+
+####################   DASHBORD   ################
 
 def gerar_fig_relatorio(uf, cidade):
     """Roda vários cenários e monta mosaico de gráficos + notas."""
-    alisa = 7  # alisamento com média móvel para dados reais
-    gamma = 0.5
+    alisa = 7  # alisamento com média móvel para dados reais ficarem mais apresentáveis
     notas = u"""
+    Projeções pelo modelo epidemiológico SEIR (Susceptíveis, Expostos, Infectados,
+    Recuperados)
+
+    • taxa de isolamento: """+str(ISOLA)+"""
 
     Fontes dos dados:
         https://covid.ourworldindata.org
@@ -295,10 +300,10 @@ def gerar_fig_relatorio(uf, cidade):
 
         # dados modelo SEIR
         args = popu[ref], data[ref]
-        b = minimize(ajustar, np.array([1.75]), args=args, bounds=[(0.1,5)], tol=0.01)
+        b = minimize(ajustar, np.array([1.75]), args=args, bounds=[(0.1,5)])
         beta = b.x[0]
-        Rzero = "R0: "+str(round(beta/gamma, 2))
-        M = projetar_SEIR(beta, popu[ref], data[ref], ref)
+        Rzero = "R0: "+str(round(beta/GAMMA, 2))
+        M = projetar_mortes_com_SEIR(beta, popu[ref], data[ref], ref)
         ax[i].plot(M, linewidth=3, color="#ff7c7a")
         ax[i].text(10, 2000, Rzero, fontsize=8, verticalalignment="bottom")
         projes = {
@@ -313,7 +318,7 @@ def gerar_fig_relatorio(uf, cidade):
         # dados reais
         ax[i].plot(data[ref].rolling(alisa).mean(), linewidth=5, color="#1f78b4")
         # projeções
-        for o in [0, 7, 14, 21, 28]:
+        for o in [0, 7, 14, 21, 28, 35]:
             ax[i].plot(nbr+o-1, M[nbr+o-1], 'o', markersize=5.0, color="whitesmoke", markeredgecolor="#1f78b4")
 
     fig.text(0.12, 0.42, totais, fontsize=7, verticalalignment='top', color="#1f78b4")
@@ -330,17 +335,11 @@ def gerar_fig_relatorio(uf, cidade):
         print("[*] "+ref)
         cor = paleta.pop()
         rs = beta_evolution(popu[ref], data[ref])
-        Rs = np.array([x/gamma for x in rs])
+        Rs = np.array([x/GAMMA for x in rs])
         axR.plot(Rs, linewidth=2, color=cor)
-        axR.text(0, Rs[0], ref, fontsize=8, verticalalignment="top", color=cor)
+        axR.text(1, Rs[0], ref, fontsize=8, verticalalignment="top", color=cor)
 
     return fig
-
-# 
-# gerar_fig_relatorio("SP", "São Paulo")
-# gerar_fig_relatorio('RJ', "Rio de Janeiro")
-# gerar_fig_relatorio('AM', "Manaus")
-# 
 
 #########################   RELATORIO   ########################################
 
@@ -360,3 +359,4 @@ my_path = "/Users/tapirus/Desktop/"
 
 # relatorio_hoje("AM", "Manaus", my_path)
 relatorio_hoje("SP", "São Paulo", my_path)
+relatorio_hoje("RJ", "Rio de Janeiro", my_path)

@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
-Modelo SEIR | Evolução do R0 | COVID-19 no Brasil
+Modelo SEIR | Evolução do R | COVID-19 no Brasil
 --------------------------------------------
 
 Ideias e modelagens desenvolvidas pela trinca:
@@ -131,7 +131,7 @@ LETAL = 0.011  # taxa de letalidade 1.1% segundo informed guess
 ISOLA = 0.43  # taxa de isolamento => 0: sem isolamento; 1: lockdown completo
 # Não usar ISOLA = 1 => quebra o modelo (div by zero)
 INICIAL = 1  # condição de contorno para iniciar modelo: mortes por milhão de habitantes
-SUB = 0.2   # taxa de mortes não notificadas => real = dado/(1-sub) 
+SUB = 0.2   # taxa de mortes não notificadas => real = dado/(1-sub)
 
 
 def base_seir_model(init_vals, params, t):
@@ -185,7 +185,7 @@ def rodar_SEIR(beta, popu, real):
             break
 
     S_0 = 1 - (m/LETAL)/N   # susceptiveis: todos - E [aproximado por todos - I]
-    E_0 = (m/LETAL)/N * (beta/GAMMA)   # E > I => E ~ I*R0
+    E_0 = (m/LETAL)/N * (beta/GAMMA)   # E > I => E ~ I*R
     I_0 = (m/LETAL)/N   # infectados: ~mortos/letalidade
     R_0 = 0       # recuperados: ~0
     init_vals = (S_0, E_0, I_0, R_0)
@@ -308,7 +308,7 @@ def gerar_fig_relatorio(uf, cidade):
         args = popu[ref], data[ref]
         b = minimize(ajustar, np.array([1.75]), args=args, bounds=[(0.1,5)])
         beta = b.x[0]
-        Rzero = "R0: "+str(round(beta/GAMMA, 2))
+        Rzero = "R: "+str(round(beta/GAMMA, 2))
         M = projetar_mortes_com_SEIR(beta, popu[ref], data[ref], ref)
         ax[i].plot(M, linewidth=3, color="#ff7c7a")
         ax[i].text(10, 2000, Rzero, fontsize=8, verticalalignment="bottom")
@@ -331,12 +331,12 @@ def gerar_fig_relatorio(uf, cidade):
     fig.text(0.12, 0.42, totais, fontsize=7, verticalalignment='top', color="#1f78b4")
     # Rs
     axR = fig.add_subplot(position=[0.68, 0.12, 0.22, 0.22])  # [left, bottom, width, height]
-    axR.set_title("Evolução do R-zero", fontsize=8)
+    axR.set_title("Evolução do R", fontsize=8)
     axR.set_xlabel("Últimos 30 dias", fontsize=8)
     axR.tick_params(labelsize=8)
     axR.set_xticklabels([str(x) for x in range(35,-1,-5)])
 
-    print("[-~-] Calculando evolução de R-zero (aguarde)")
+    print("[-~-] Calculando evolução do R (aguarde)")
     paleta = ["#9EC5DE", "#5E9EC9", "#1f78b4"]
     for ref in refs:
         print("[*] "+ref)

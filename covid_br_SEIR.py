@@ -206,6 +206,7 @@ def projetar_mortes_com_SEIR(beta, popu, real, ref):
     seir, i = rodar_SEIR(beta, popu, real)
     # mortes via modelo => Infectados * (popu * isolamento) * letalidade
     M = [x[2]*popu*(1-ISOLA)*LETAL for x in seir]
+    I = [x[2]*popu*(1-ISOLA) for x in seir]
     d = len(real) - i
     # qualidade do ajuste
     real = real/(1-SUB)     # ajuste para compensar subnotificao das mortes
@@ -218,8 +219,9 @@ def projetar_mortes_com_SEIR(beta, popu, real, ref):
 
     # adiciona i células vazias (NAN) no início para alinhar corretamente no eixo x
     mortes_teoricas = np.hstack((np.zeros(i) + np.nan, np.array(M)))
+    infect_teorico = np.hstack((np.zeros(i) + np.nan, np.array(I)))
 
-    return mortes_teoricas, co
+    return mortes_teoricas, co, infect_teorico
 
 
 def ajustar(B, popu, real):
@@ -289,7 +291,7 @@ def gerar_fig_relatorio(uf, cidade):
 
     print('[-~-] Coletando dados atualizados das fontes')
     raw, data, nbr, refs, dti, popu = preparar_dados(uf, cidade)
-    dtf = dti + datetime.timedelta(days=200)
+    dtf = dti + datetime.timedelta(days=201)
 
     print("[-~-] Rodando modelo SEIR (aguarde)")
     for i in [0, 1, 2]:
@@ -309,7 +311,13 @@ def gerar_fig_relatorio(uf, cidade):
         b = minimize(ajustar, np.array([1.75]), args=args, bounds=[(0.1,5)])
         beta = b.x[0]
         Rzero = "R: "+str(round(beta/GAMMA, 2))
-        M, co = projetar_mortes_com_SEIR(beta, popu[ref], data[ref], ref)
+        M, co, I = projetar_mortes_com_SEIR(beta, popu[ref], data[ref], ref)
+
+        # preparar e exportar CSV de infectados
+        index = pd.to_datetime(dti) + pd.to_timedelta(np.arange(len(I)), 'D')
+        pd.Series(I, index=index).to_csv(my_path+ref+"_infectados.csv", header=False)
+
+        # graficos
         ax[i].plot(M, linewidth=3, color="#ff7c7a")
         ax[i].text(10, 2000, Rzero, fontsize=8, verticalalignment="bottom")
         projes = {

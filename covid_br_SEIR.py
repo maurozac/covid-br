@@ -196,14 +196,14 @@ def rodar_SEIR(beta, popu, real):
     # seir => np.array([S,E,I,R])
     seir = base_seir_model(init_vals, params, t)
 
-    return seir
+    return seir, i
 
 
 def projetar_mortes_com_SEIR(beta, popu, real, ref):
     """Roda modelo e avalia qualidade do ajuste com dados reais
     RETORNA np array com curva modelada para mortes
     """
-    seir = rodar_SEIR(beta, popu, real)
+    seir, i = rodar_SEIR(beta, popu, real)
     # mortes via modelo => Infectados * (popu * isolamento) * letalidade
     M = [x[2]*popu*(1-ISOLA)*LETAL for x in seir]
     d = len(real) - i
@@ -219,7 +219,7 @@ def projetar_mortes_com_SEIR(beta, popu, real, ref):
     # adiciona i células vazias (NAN) no início para alinhar corretamente no eixo x
     mortes_teoricas = np.hstack((np.zeros(i) + np.nan, np.array(M)))
 
-    return mortes_teoricas
+    return mortes_teoricas, co
 
 
 def ajustar(B, popu, real):
@@ -230,7 +230,7 @@ def ajustar(B, popu, real):
     """
     # parametros
     beta = B[0]  # scipy.optimize.minimize requer entrada de np.array([p0,...])
-    seir = rodar_SEIR(beta, popu, real)
+    seir, i = rodar_SEIR(beta, popu, real)
     # mortes via modelo => Infectados * popu * letalidade * isolamento
     M = [x[2]*popu*(1-ISOLA)*LETAL for x in seir]
     d = len(real) - i
@@ -309,7 +309,7 @@ def gerar_fig_relatorio(uf, cidade):
         b = minimize(ajustar, np.array([1.75]), args=args, bounds=[(0.1,5)])
         beta = b.x[0]
         Rzero = "R: "+str(round(beta/GAMMA, 2))
-        M = projetar_mortes_com_SEIR(beta, popu[ref], data[ref], ref)
+        M, co = projetar_mortes_com_SEIR(beta, popu[ref], data[ref], ref)
         ax[i].plot(M, linewidth=3, color="#ff7c7a")
         ax[i].text(10, 2000, Rzero, fontsize=8, verticalalignment="bottom")
         projes = {

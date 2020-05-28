@@ -127,11 +127,11 @@ Letalidade estimada por países que testaram exaustivamente: 1,1%
 
 ALPHA = 0.2  # 1/α Incubation period = 5 days
 GAMMA = 0.5  # 1/γ value of 2 days, so γ = 0.5
-LETAL = 0.011  # taxa de letalidade 1.1% segundo informed guess
-ISOLA = 0.43  # taxa de isolamento => 0: sem isolamento; 1: lockdown completo
-# Não usar ISOLA = 1 => quebra o modelo (div by zero)
 INICIAL = 1  # condição de contorno para iniciar modelo: mortes por milhão de habitantes
-SUB = 0.2   # taxa de mortes não notificadas => real = dado/(1-sub)
+LETAL = 0.009  # taxa de letalidade 0.7% a 1.1%, sem colapso
+SUB = 0.1   # taxa de mortes não notificadas => real = dado/(1-sub) [% por dentro!]
+ISOLA = 0.5  # taxa de isolamento => 0: sem isolamento; 1: lockdown completo => reduz população Susceptível
+# Não usar ISOLA = 1 => quebra o modelo (div by zero)
 
 
 def base_seir_model(init_vals, params, t):
@@ -171,7 +171,7 @@ def rodar_SEIR(beta, popu, real):
     RETORNA: resultado do modelo SEIR
     """
     # parametros
-    N = popu * (1 - ISOLA)  # populacao, descontados os isolados
+    N = popu * (1-ISOLA)  # populacao, descontados os isolados
     real = real/(1-SUB)     # ajuste para compensar subnotificao das mortes
     params = (ALPHA, beta, GAMMA)
     # valores iniciais para S, E, I, R [normalizados]
@@ -184,7 +184,7 @@ def rodar_SEIR(beta, popu, real):
         if m > N * (INICIAL * 0.000001):  # mortes por milhão de habitantes
             break
 
-    S_0 = 1 - (m/LETAL)/N   # susceptiveis: todos - E [aproximado por todos - I]
+    S_0 = 1 - (m/LETAL)/N * (beta/GAMMA) - (m/LETAL)/N  # S = N - E - I - R
     E_0 = (m/LETAL)/N * (beta/GAMMA)   # E > I => E ~ I*R
     I_0 = (m/LETAL)/N   # infectados: ~mortos/letalidade
     R_0 = 0       # recuperados: ~0
@@ -199,23 +199,25 @@ def rodar_SEIR(beta, popu, real):
     return seir, i
 
 
-def projetar_mortes_com_SEIR(beta, popu, real, ref):
+def projetar_curvas_com_SEIR(beta, popu, real, ref):
     """Roda modelo e avalia qualidade do ajuste com dados reais
-    RETORNA np array com curva modelada para mortes
+    RETORNA np array com curva modelada para mortes, a correlacao e a curva para
+    infectados
     """
     seir, i = rodar_SEIR(beta, popu, real)
+    # i: dia em que a condição inicial é observada, dia em que começa a simular o SEIR
     # mortes via modelo => Infectados * (popu * isolamento) * letalidade
     M = [x[2]*popu*(1-ISOLA)*LETAL for x in seir]
     I = [x[2]*popu*(1-ISOLA) for x in seir]
-    d = len(real) - i
-    # qualidade do ajuste
-    real = real/(1-SUB)     # ajuste para compensar subnotificao das mortes
+    d = len(real) - i  # comprimento dos dados sobrepostos
+    # qualidade do ajuste => calculado sobre o trecho sobreposto
     par = pd.DataFrame([
         M[:d],
-        real[i:]  # nao precisaria corrigir por sub, é transformação linear
+        real[i:]/(1-SUB),   # nao precisaria corrigir por sub, é transformação linear
     ])
     co = par.T.corr()[1][0]
-    print("[*] Correlação entre Modelo e dados reais (" + ref + "):", co)
+    print("[*] Correlação entre modelo e dados reais (" + ref + "):", co)
+    # print(i, d, len(M), len(M[:d]), len(real), len(real[i:]))
 
     # adiciona i células vazias (NAN) no início para alinhar corretamente no eixo x
     mortes_teoricas = np.hstack((np.zeros(i) + np.nan, np.array(M)))
@@ -237,8 +239,10 @@ def ajustar(B, popu, real):
     M = [x[2]*popu*(1-ISOLA)*LETAL for x in seir]
     d = len(real) - i
     real = real/(1-SUB)     # ajuste para compensar subnotificao das mortes
+    # variaval a minimizar: soma das mortes no trecho sobreposto
+    mini = abs(sum(real[i:]) - sum(M[:d]))
 
-    return abs(sum(real[i:]) - sum(M[:d]))
+    return mini
 
 
 # args = popu['Brasil'], data['Brasil']
@@ -265,19 +269,25 @@ def gerar_fig_relatorio(uf, cidade):
     """Roda vários cenários e monta mosaico de gráficos + notas."""
     alisa = 7  # alisamento com média móvel para dados reais ficarem mais apresentáveis
     notas = u"""
-    Projeções pelo modelo epidemiológico SEIR (Susceptíveis, Expostos, Infectados,
-    Recuperados)
+    Projeções obtidas por modelo epidemiológico (SEIR | Susceptíveis, Expostos,
+    Infectados, Recuperados)
 
     • taxa de isolamento: """+str(int(ISOLA*100))+"""%
     • taxa de letalidade: """+str(round(LETAL*100, 2))+"""%
     • mortes não contabilizadas: """+str(int(SUB*100))+"""%
+
+    Modelo epidemiológico ajustado sobre os últimos dados reais disponíveis para
+    estimar o parâmetro R (taxa de transmissão) corrente.
+
+    As projeções dependem do valor de R. Valores de R em queda indicam tendência
+    de queda na intensidade das projeções para os próximos dias. E vice-versa.
 
     Fontes dos dados:
         https://covid.ourworldindata.org
         https://brasil.io
     """
 
-    equipe = u'  M.Zac | L.Tozi | R.Luciano || https://github.com/Maurozac/covid-br/blob/master/covid_br_SEIR.py'
+    equipe = u'  M.Zac | L.Tozi | R.Luciano || veja mais em: https://github.com/Maurozac/covid-br/blob/master/covid_br_SEIR.py'
 
     totais = u"""
     Mortes estimadas (no dia)"""
@@ -286,14 +296,14 @@ def gerar_fig_relatorio(uf, cidade):
     fig, ax = plt.subplots(1, 3, figsize=(12, 7), sharex=True, sharey=True)
     fig.suptitle(u"Projeção da epidemia Covid-19" +  " | " + hoje, fontsize=12)
     fig.subplots_adjust(bottom=0.5)
-    fig.text(0.33, 0.42, notas, fontsize=7, verticalalignment='top')
-    fig.text(0.33, 0.02, equipe, family="monospace", fontsize='6', color='#ff003f', horizontalalignment='left')
+    fig.text(0.3, 0.42, notas, fontsize=7, verticalalignment='top')
+    fig.text(0.3, 0.02, equipe, family="monospace", fontsize='6', color='#ff003f', horizontalalignment='left')
 
     print('[-~-] Coletando dados atualizados das fontes')
     raw, data, nbr, refs, dti, popu = preparar_dados(uf, cidade)
-    dtf = dti + datetime.timedelta(days=201)
+    dtf = dti + datetime.timedelta(days=200)
 
-    print("[-~-] Rodando modelo SEIR (aguarde)")
+    print("[-~-] Ajustando modelo SEIR (aguarde)")
     for i in [0, 1, 2]:
         if refs[i] == 'n/d':
             ax[i].set_title(u"Dados não disponíveis", fontsize=8)
@@ -302,7 +312,6 @@ def gerar_fig_relatorio(uf, cidade):
         ref = refs[i]
         ax[i].set_title(ref, fontsize=8)
         ax[i].set_xlabel(str(dti)[:10]+" (0) a "+str(dtf)[:10]+" (200)", fontsize=8)
-        ax[i].set_xlim(0, 220)
         ax[i].set_ylabel(u'Mortes no dia', fontsize=8)
         ax[i].tick_params(labelsize=8)
 
@@ -311,7 +320,7 @@ def gerar_fig_relatorio(uf, cidade):
         b = minimize(ajustar, np.array([1.75]), args=args, bounds=[(0.1,5)])
         beta = b.x[0]
         Rzero = "R: "+str(round(beta/GAMMA, 2))
-        M, co, I = projetar_mortes_com_SEIR(beta, popu[ref], data[ref], ref)
+        M, co, I = projetar_curvas_com_SEIR(beta, popu[ref], data[ref], ref)
 
         # preparar e exportar CSV de infectados
         index = pd.to_datetime(dti) + pd.to_timedelta(np.arange(len(I)), 'D')

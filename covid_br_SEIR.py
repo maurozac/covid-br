@@ -127,7 +127,6 @@ Letalidade estimada por países que testaram exaustivamente: 1,1%
 
 ALPHA = 0.2  # 1/α Incubation period = 5 days
 GAMMA = 0.5  # 1/γ value of 2 days, so γ = 0.5
-INICIAL = 1  # condição de contorno para iniciar modelo: mortes por milhão de habitantes
 LETAL = 0.009  # taxa de letalidade 0.7% a 1.1%, sem colapso
 SUB = 0.1   # taxa de mortes não notificadas => real = dado/(1-sub) [% por dentro!]
 ISOLA = 0.5  # taxa de isolamento => 0: sem isolamento; 1: lockdown completo => reduz população Susceptível
@@ -164,7 +163,7 @@ def base_seir_model(init_vals, params, t):
     return np.stack([S, E, I, R]).T
 
 
-def rodar_SEIR(beta, popu, real):
+def rodar_SEIR(beta, init, popu, real):
     """Prepara dados de entrada do modelo SEIR e o executa.
     Modelos exponenciais são muito sensíveis às condições iniciais,
     as hipóteses e aproximações assumidas aqui são importantes.
@@ -181,7 +180,7 @@ def rodar_SEIR(beta, popu, real):
     # m muito alto => suposicoes de partida para os coeficiente do modelo ficam ruins
     for i in range(1, len(real)):
         m = real.head(i).sum()
-        if m > N * (INICIAL * 0.000001):  # mortes por milhão de habitantes
+        if m > N * (init * 0.000001):  # mortes por milhão de habitantes
             break
 
     S_0 = 1 - (m/LETAL)/N * (beta/GAMMA) - (m/LETAL)/N  # S = N - E - I - R
@@ -199,12 +198,12 @@ def rodar_SEIR(beta, popu, real):
     return seir, i
 
 
-def projetar_curvas_com_SEIR(beta, popu, real, ref):
+def projetar_curvas_com_SEIR(beta, init, popu, real, ref):
     """Roda modelo e avalia qualidade do ajuste com dados reais
     RETORNA np array com curva modelada para mortes, a correlacao e a curva para
     infectados
     """
-    seir, i = rodar_SEIR(beta, popu, real)
+    seir, i = rodar_SEIR(beta, init, popu, real)
     # i: dia em que a condição inicial é observada, dia em que começa a simular o SEIR
     # mortes via modelo => Infectados * (popu * isolamento) * letalidade
     M = [x[2]*popu*(1-ISOLA)*LETAL for x in seir]
@@ -216,7 +215,9 @@ def projetar_curvas_com_SEIR(beta, popu, real, ref):
         real[i:]/(1-SUB),   # nao precisaria corrigir por sub, é transformação linear
     ])
     co = par.T.corr()[1][0]
-    print("[*] Correlação entre modelo e dados reais (" + ref + "):", co)
+    print("[*] " + ref)
+    print("[.] beta: " + str(round(beta, 4)) +" init: " + str(round(init, 4)))
+    print("[.] Correlação entre modelo e dados reais:", round(co, 4))
     # print(i, d, len(M), len(M[:d]), len(real), len(real[i:]))
 
     # adiciona i células vazias (NAN) no início para alinhar corretamente no eixo x
@@ -231,22 +232,24 @@ def ajustar(B, popu, real):
     modelo SEIR e buscar ajuste.
     A variável a ser minimizada é a diferença absoluta entre o total de mortes
     observados e previstos => deve tender a zero
+    https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html
     """
     # parametros
     beta = B[0]  # scipy.optimize.minimize requer entrada de np.array([p0,...])
-    seir, i = rodar_SEIR(beta, popu, real)
+    init = B[1]  # scipy.optimize.minimize requer entrada de np.array([p0,...])
+    seir, i = rodar_SEIR(beta, init, popu, real)
     # mortes via modelo => Infectados * popu * letalidade * isolamento
     M = [x[2]*popu*(1-ISOLA)*LETAL for x in seir]
     d = len(real) - i
     real = real/(1-SUB)     # ajuste para compensar subnotificao das mortes
-    # variaval a minimizar: soma das mortes no trecho sobreposto
+    # variaval a minimizar: soma das mortes no trecho sobreposto e a correlacao
     mini = abs(sum(real[i:]) - sum(M[:d]))
-
     return mini
 
 
 # args = popu['Brasil'], data['Brasil']
-# b = minimize(ajustar, np.array([1.75]), args=args, bounds=[(0.1,5)])
+# b = minimize(ajustar, np.array([1.2, .1]), args=args, bounds=[(0.1,5), (0.01,100)])
+# b = minimize(ajustar, np.array([1.2, .1]), args=args, method='Nelder-Mead')
 # b.x[0]/GAMMA
 
 
@@ -258,7 +261,8 @@ def beta_evolution(popu, real, k=30):
     rs = []
     for t in range(-k, 0, 1):
         args = popu, real.head(t)
-        b = minimize(ajustar, np.array([1.75]), args=args, bounds=[(0.1,5)])
+        b = minimize(ajustar, np.array([1.2, 1.]), args=args, bounds=[(0.1,5), (0.01,100)])
+        # b = minimize(ajustar, np.array([1.2, 1.]), args=args, method='Nelder-Mead')
         rs.append(b.x[0])
     return rs
 
@@ -317,10 +321,12 @@ def gerar_fig_relatorio(uf, cidade):
 
         # dados modelo SEIR
         args = popu[ref], data[ref]
-        b = minimize(ajustar, np.array([1.75]), args=args, bounds=[(0.1,5)])
+        b = minimize(ajustar, np.array([1.2, 1.]), args=args, bounds=[(0.1,5), (0.01,100)])
+        # b = minimize(ajustar, np.array([1.2, 1.]), args=args, method='Nelder-Mead')
         beta = b.x[0]
+        init = b.x[1]
         Rzero = "R: "+str(round(beta/GAMMA, 2))
-        M, co, I = projetar_curvas_com_SEIR(beta, popu[ref], data[ref], ref)
+        M, co, I = projetar_curvas_com_SEIR(beta, init, popu[ref], data[ref], ref)
 
         # preparar e exportar CSV de infectados
         index = pd.to_datetime(dti) + pd.to_timedelta(np.arange(len(I)), 'D')
@@ -384,3 +390,4 @@ my_path = "/Users/tapirus/Desktop/"
 relatorio_hoje("AM", "Manaus", my_path)
 relatorio_hoje("SP", "São Paulo", my_path)
 relatorio_hoje("RJ", "Rio de Janeiro", my_path)
+relatorio_hoje("SP", "São José dos Campos", my_path)

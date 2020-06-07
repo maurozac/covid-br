@@ -81,7 +81,7 @@ def preparar_dados(uf="SP", cidade=u"São Paulo"):
         "Brasil": 211.0 * 10**6,
     }
     # ◔◔ {já baixamos filtrado para uf, mas pode se usar outros estados}
-    uf_data = pd.read_csv("https://brasil.io/dataset/covid19/caso?state="+uf+"&format=csv")
+    uf_data = pd.read_csv("https://brasil.io/dataset/covid19/caso/?state="+uf+"&format=csv")
 
     # adicionar dados da uf
     uf_select = uf_data.loc[lambda df: df['place_type'] == "state", :]
@@ -385,9 +385,12 @@ def relatorio_hoje(uf, cidade, my_path):
 
 
 # acerte o caminho para o seu ambiente... esse aí é o meu :-)
-my_path = "/Users/tapirus/Desktop/"
+my_path = "/Users/tapirus/Desktop/covid/"
 
 relatorio_hoje("AM", "Manaus", my_path)
-relatorio_hoje("SP", "São Paulo", my_path)
+relatorio_hoje("PE", "Recife", my_path)
 relatorio_hoje("RJ", "Rio de Janeiro", my_path)
-relatorio_hoje("SP", "São José dos Campos", my_path)
+relatorio_hoje("PA", "Belém", my_path)
+relatorio_hoje("SP", "São Paulo", my_path)
+relatorio_hoje("RS", "Porto Alegre", my_path)
+relatorio_hoje("CE", "Fortaleza", my_path)

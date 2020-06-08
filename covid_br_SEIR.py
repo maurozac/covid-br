@@ -42,7 +42,7 @@ def preparar_dados(uf="SP", cidade=u"São Paulo"):
     u"""Busca dados e organiza tabela "data" com os dados de referência para a
     modelagem.
     Fontes:
-    . Mundo: https://covid.ourworldindata.org
+    . Mundo: https://covid.ourworldindata.org  # usa dados federais DEPRECATED
     . Brasil: https://brasil.io
     Retorna:
     raw <DataFrame> | Série completa do número de mortes/dia por país, sem trans-
@@ -68,6 +68,8 @@ def preparar_dados(uf="SP", cidade=u"São Paulo"):
     nbr = data.shape[0]
     dia_0 = tempo[inicio['Brasil']]
     dti = datetime.datetime(2020, int(dia_0[5:7]), int(dia_0[8:10]))
+    print("[*] BRASIL total de mortes (ourworldindata, federal):", data['Brasil'].sum())
+
     # dados Brasil
     estados = [
         'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS',
@@ -81,15 +83,27 @@ def preparar_dados(uf="SP", cidade=u"São Paulo"):
     popu = {
         "Brasil": 211.0 * 10**6,
     }
+
     # ◔◔ {já baixamos filtrado para uf, mas pode se usar outros estados}
-    down = requests.get("https://brasil.io/dataset/covid19/caso/?state="+uf+"&format=csv")
+    # down = requests.get("https://brasil.io/dataset/covid19/caso/?state="+uf+"&format=csv")
+    # if down.status_code == 200:
+    #     uf_data = pd.read_csv(StringIO(down.text))
+    # else:
+    #     print('[*] FALHA no download de dados | brasil.io')
+
+    # ◔◔ {NEW baixar full, todos os estados}
+    down = requests.get("https://brasil.io/dataset/covid19/caso/?format=csv")
     if down.status_code == 200:
-        uf_data = pd.read_csv(StringIO(down.text))
+        full_data = pd.read_csv(StringIO(down.text))
     else:
         print('[*] FALHA no download de dados | brasil.io')
 
+    # dados BRASIL vindo da soma dos estados
+    all_select = full_data.loc[lambda df: df['place_type'] == "state", :]
+
     # adicionar dados da uf
-    uf_select = uf_data.loc[lambda df: df['place_type'] == "state", :]
+    # uf_select = uf_data.loc[lambda df: df['place_type'] == "state", :]
+    uf_select = all_select.loc[lambda df: df['state'] == uf, :]
     popu[uf] = uf_select['estimated_population_2019'].tail(1).values[0]
     uf_mortes = list(uf_select['deaths'].head(nbr + 1).fillna(0.0))
     uf_mortes = [uf_mortes[i] - uf_mortes[i+1] for i in range(len(uf_mortes)-1)]
@@ -97,8 +111,26 @@ def preparar_dados(uf="SP", cidade=u"São Paulo"):
     uf_mortes.reverse()
     data[uf] = pd.Series(uf_mortes).values
 
+    ### HACK: recalcula data['Brasil'] com dados dos estados ###
+    # popu Brasil => já tem
+    br_mortes = pd.Series(uf_mortes).values  # começa carregado com os dados da uf
+    for u in estados:
+        if u == uf: continue  # pula uf
+        u_select = all_select.loc[lambda df: df['state'] == u, :]
+        u_mortes = list(u_select['deaths'].head(nbr + 1).fillna(0.0))
+        u_mortes = [u_mortes[i] - u_mortes[i+1] for i in range(len(u_mortes)-1)]
+        u_mortes += [0 for _ in range(nbr-len(u_mortes))]  # corrigir tamanho
+        u_mortes.reverse()
+        br_mortes += pd.Series(u_mortes).values
+
+    data["Brasil"] = br_mortes   ## em raw permanece o dado federal
+    print("[*] BRASIL total de mortes (brasil.io, soma dos estados):", br_mortes.sum())
+    print("[*]", uf, "total de mortes (brasil.io):", data[uf].sum())
+    #### feito em 08 de junho 2020  ####
+
     # adicionar dados da cidade
-    cidade_select = uf_data.loc[lambda df: df['city'] == cidade, :]
+    # cidade_select = uf_data.loc[lambda df: df['city'] == cidade, :]
+    cidade_select = full_data.loc[lambda df: df['city'] == cidade, :]
     if cidade_select.shape[0] > 0:
         popu[cidade] = cidade_select['estimated_population_2019'].tail(1).values[0]
         cidade_mortes = list(cidade_select['deaths'].head(nbr + 1).fillna(0.0))
@@ -107,18 +139,18 @@ def preparar_dados(uf="SP", cidade=u"São Paulo"):
         cidade_mortes.reverse()
         if sum(cidade_mortes):
             data[cidade] = pd.Series(cidade_mortes).values
+            print("[*]", cidade, "total de mortes (brasil.io):", data[cidade].sum())
         else:
             print(u"[*] AVISO: a cidade " + cidade + " não possui mortes confirmadas")
     else:
         print(u"[*] AVISO: a cidade " + cidade + " não consta nos dados para esta UF")
-        print(u'[*] Utilize uma das cidades disponíveis para o terceiro gráfico:')
-        for d in set(uf_data['city']):
-            print(d)
 
     refs = ['Brasil', uf, cidade] # as referencias validas...
 
     return raw, data, nbr, refs, dti, popu
 
+
+# raw, data, nbr, refs, dti, popu = preparar_dados()
 
 #########################   SEIR   ########################################
 

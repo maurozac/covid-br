@@ -15,6 +15,7 @@ https://en.wikipedia.org/wiki/Compartmental_models_in_epidemiology#The_SEIR_mode
 """
 
 import datetime
+from io import StringIO
 
 import requests
 import numpy as np
@@ -81,7 +82,11 @@ def preparar_dados(uf="SP", cidade=u"São Paulo"):
         "Brasil": 211.0 * 10**6,
     }
     # ◔◔ {já baixamos filtrado para uf, mas pode se usar outros estados}
-    uf_data = pd.read_csv("https://brasil.io/dataset/covid19/caso/?state="+uf+"&format=csv")
+    down = requests.get("https://brasil.io/dataset/covid19/caso/?state="+uf+"&format=csv")
+    if down.status_code == 200:
+        uf_data = pd.read_csv(StringIO(down.text))
+    else:
+        print('[*] FALHA no download de dados | brasil.io')
 
     # adicionar dados da uf
     uf_select = uf_data.loc[lambda df: df['place_type'] == "state", :]
@@ -103,10 +108,10 @@ def preparar_dados(uf="SP", cidade=u"São Paulo"):
         if sum(cidade_mortes):
             data[cidade] = pd.Series(cidade_mortes).values
         else:
-            print(u"AVISO: a cidade " + cidade + " não possui mortes confirmadas")
+            print(u"[*] AVISO: a cidade " + cidade + " não possui mortes confirmadas")
     else:
-        print(u"AVISO: a cidade " + cidade + " não consta nos dados para esta UF")
-        print(u'Utilize uma das cidades disponíveis para o terceiro gráfico:')
+        print(u"[*] AVISO: a cidade " + cidade + " não consta nos dados para esta UF")
+        print(u'[*] Utilize uma das cidades disponíveis para o terceiro gráfico:')
         for d in set(uf_data['city']):
             print(d)
 

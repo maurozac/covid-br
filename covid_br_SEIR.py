@@ -15,6 +15,7 @@ https://en.wikipedia.org/wiki/Compartmental_models_in_epidemiology#The_SEIR_mode
 """
 
 import datetime
+import gzip
 from io import StringIO, BytesIO
 
 import requests
@@ -33,7 +34,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 __author__ = "Mauro Zackiewicz"   # codigo
 __copyright__ = "Copyright 2020"
 __license__ = "New BSD License"
-__version__ = "2.0.1"
+__version__ = "2.0.3"
 __email__ = "maurozac@gmail.com"
 __status__ = "Experimental"
 

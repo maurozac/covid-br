@@ -15,7 +15,7 @@ https://en.wikipedia.org/wiki/Compartmental_models_in_epidemiology#The_SEIR_mode
 """
 
 import datetime
-from io import StringIO
+from io import StringIO, BytesIO
 
 import requests
 import numpy as np
@@ -92,9 +92,10 @@ def preparar_dados(uf="SP", cidade=u"São Paulo"):
     #     print('[*] FALHA no download de dados | brasil.io')
 
     # ◔◔ {NEW baixar full, todos os estados}
-    down = requests.get("https://brasil.io/dataset/covid19/caso/?format=csv")
+    # down = requests.get("https://brasil.io/dataset/covid19/caso/?format=csv")  # DEPRECATED
+    down = requests.get("https://data.brasil.io/dataset/covid19/caso.csv.gz")
     if down.status_code == 200:
-        full_data = pd.read_csv(StringIO(down.text))
+        full_data = pd.read_csv(BytesIO(gzip.decompress(down.content)))
     else:
         print('[*] FALHA no download de dados | brasil.io')
 
@@ -125,8 +126,9 @@ def preparar_dados(uf="SP", cidade=u"São Paulo"):
 
     data["Brasil"] = br_mortes   ## em raw permanece o dado federal
     print("[*] BRASIL total de mortes (brasil.io, soma dos estados):", br_mortes.sum())
-    print("[*]", uf, "total de mortes (brasil.io):", data[uf].sum())
     #### feito em 08 de junho 2020  ####
+
+    print("[*]", uf, "total de mortes (brasil.io):", data[uf].sum())
 
     # adicionar dados da cidade
     # cidade_select = uf_data.loc[lambda df: df['city'] == cidade, :]
@@ -164,10 +166,11 @@ Letalidade estimada por países que testaram exaustivamente: 1,1%
 
 ALPHA = 0.2  # 1/α Incubation period = 5 days
 GAMMA = 0.5  # 1/γ value of 2 days, so γ = 0.5
-LETAL = 0.009  # taxa de letalidade 0.7% a 1.1%, sem colapso
-SUB = 0.1   # taxa de mortes não notificadas => real = dado/(1-sub) [% por dentro!]
-ISOLA = 0.5  # taxa de isolamento => 0: sem isolamento; 1: lockdown completo => reduz população Susceptível
+LETAL = 0.006  # taxa de letalidade 0.7% a 1.1%, sem colapso
+SUB = 0.15   # taxa de mortes não notificadas => real = dado/(1-sub) [% por dentro!]
+ISOLA = 0.45  # taxa de isolamento => 0: sem isolamento; 1: lockdown completo => reduz população Susceptível
 # Não usar ISOLA = 1 => quebra o modelo (div by zero)
+relatorio_hoje("SP", "São Paulo", my_path)
 
 
 def base_seir_model(init_vals, params, t):
